@@ -1,0 +1,13 @@
+#! /usr/bin/env python
+
+import click
+import fits
+import pkg_resources
+
+
+@click.group()
+@click.version_option(version=pkg_resources.require("fits")[0].version)
+def cli():
+    """Fits is a set of tools for analyzing CRISPR screen data.  Let's get FITS!  
+    """
+
