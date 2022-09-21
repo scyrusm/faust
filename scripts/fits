@@ -10,4 +10,5 @@ import pkg_resources
 def cli():
     """Fits is a set of tools for analyzing CRISPR screen data.  Let's get FITS!  
     """
-
+if __name__ == '__main__':
+    cli()
