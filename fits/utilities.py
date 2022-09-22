@@ -103,17 +103,20 @@ def get_summary_df(df,
             raise Exception(
                 "outputs and inputs must be equal length when input_type is 'matched'"
             )
+    output2input_dict = {}
     for output_col, input_col in zip(outputs, inputs):
         if verbose:
             print("Comparing input", input_col, "with output", output_col)
         df[output_col + '_odds_ratio'] = np.divide(df[output_col],
                                                    df[input_col])
+        output2input_dict[output_col] = input_col
 
     from scipy.stats import mannwhitneyu
     constructs_ids = []
     cless = []
     #tissues = []
     output_sites = []
+    input_sites = []
     mws = []
     for construct_id in tqdm(df['Target Gene'].unique(),
                              desc='Looping through target genes'):
@@ -124,26 +127,57 @@ def get_summary_df(df,
         ]:
             a = experiment[odds_ratio].values
             b = control[odds_ratio].values
-            if input_type == 'matched': # This must be done before calculating mannwhitneyu
+            if input_type == 'matched':
                 a = [x for x in a if not np.isinf(x) and not np.isnan(x)]
                 b = [x for x in b if not np.isinf(x) and not np.isnan(x)]
+            if len(a) == 0 or len(b) == 0:
+                cless.append(np.nan)
+                mws.append(np.nan)
 
-            mw = mannwhitneyu(a, b, alternative='two-sided')
-            cles = mw.statistic / len(experiment) / len(control)
+            else:
+                mw = mannwhitneyu(a, b, alternative='two-sided')
+                cless.append(mw.statistic / len(a) / len(b))
+                mws.append(mw.pvalue)
+            output_sites.append(odds_ratio.split('_odds_ratio')[0])
+            input_sites.append(
+                output2input_dict[odds_ratio.split('_odds_ratio')[0]])
             constructs_ids.append(construct_id)
-            cless.append(cles)
-            #  tissues.append(odds_ratio.split(' ')[0])
-            output_sites.append(odds_ratio.split('_')[0])
-            mws.append(mw.pvalue)
+
     summary_df = pd.DataFrame(constructs_ids, columns=['gene'])
     #  summary_df['tissue'] = tissues
     summary_df['output_site'] = output_sites
+    summary_df['input_site'] = input_sites
     summary_df['CommonLanguageEffectSize'] = cless
     summary_df['MannWhitneyP'] = mws
-    from statsmodels.stats.multitest import fdrcorrection
-
-    summary_df['BH_q'] = fdrcorrection(summary_df['MannWhitneyP'].values, )[1]
+    #    from statsmodels.stats.multitest import fdrcorrection
+    #    if summary_df['MannWhitneyP'].isnull().sum() > 0:
+    #        # this might cause issues in older python versions...
+    #        i2mwp = summary_df.reset_index()['MannWhitneyP'].to_dict()
+    #        i2mwp_real = {x: y for x, y in i2mwp.items() if not np.isnan(y)}
+    #        i2bhq_real = {
+    #            x: y
+    #            for x, y in zip(i2mwp_real.keys(),
+    #                            fdrcorrection(list(i2mwp_real.values()))[1])
+    #        }
+    #        summary_df['BH_q'] = [
+    #            i2bhq_real[i] if i in i2bhq_real.keys() else np.nan
+    #            for i in range(len(summary_df))
+    #        ]
+    #    else:
+    #        summary_df['BH_q'] = fdrcorrection(
+    #            summary_df['MannWhitneyP'].values, )[1]
+    from fits.utilities import nan_fdrcorrection_q
+    summary_df['BH_q'] = nan_fdrcorrection_q(summary_df['MannWhitneyP'].values)
     return summary_df
+
+
+def nan_fdrcorrection_q(pvalues):
+    from statsmodels.stats.multitest import fdrcorrection
+    pvalues = np.array(pvalues)
+    realmask = ~np.isnan(pvalues)
+    qvalues = np.array([np.nan] * len(pvalues))
+    qvalues[realmask] = fdrcorrection(pvalues[realmask])[1]
+    return qvalues
 
 
 def get_replicate_aggregated_statistics(summary_df,
@@ -169,6 +203,8 @@ def get_replicate_aggregated_statistics(summary_df,
 
     from statsmodels.stats.multitest import fdrcorrection
     from scipy.stats import combine_pvalues
+    from fits.utilities import nan_fdrcorrection_q
+
     if not inplace:
         summary_df = summary_df.copy()
     for aggregation in summary_df[aggregation_column].unique():
@@ -178,8 +214,9 @@ def get_replicate_aggregated_statistics(summary_df,
                 'gene')['MannWhitneyP'].apply(max)
         gene2aggregate_union_q = {
             gene: q
-            for gene, q in zip(aggregate_gene_max_p.index.values,
-                               fdrcorrection(aggregate_gene_max_p.values)[1])
+            for gene, q in zip(
+                aggregate_gene_max_p.index.values,
+                nan_fdrcorrection_q(aggregate_gene_max_p.values))
         }
         summary_df['{}_union_BH_q'.format(aggregation)] = summary_df[
             'gene'].apply(lambda x: gene2aggregate_union_q[x])
@@ -191,7 +228,7 @@ def get_replicate_aggregated_statistics(summary_df,
             gene: q
             for gene, q in zip(
                 aggregate_gene_fisher_combined_p.index.values,
-                fdrcorrection(aggregate_gene_fisher_combined_p.values)[1])
+                nan_fdrcorrection_q(aggregate_gene_fisher_combined_p.values))
         }
         summary_df['{}_intersection_BH_q'.format(aggregation)] = summary_df[
             'gene'].apply(lambda x: gene2aggregate_intersection_q[x])
