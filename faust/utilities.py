@@ -70,7 +70,9 @@ def get_summary_df(df,
                    inputs,
                    outputs,
                    input_type='single',
-                   verbose=True):
+                   verbose=True,
+                   count_threshold=1,
+                   estimate_cells=True):
     """
 
     Parameters
@@ -90,14 +92,16 @@ def get_summary_df(df,
     """
     from tqdm import tqdm
     import pandas as pd
+    from faust.utilities import nan_fdrcorrection_q
+    from scipy.stats import mannwhitneyu
+
     if input_type not in ['single', 'matched']:
         raise Exception("input_type must be one of 'single', 'matched'")
     df = df.copy()
     if input_type == 'single':
         df['Input Sum'] = df[inputs].sum(axis=1)
-        df['Input Mean'] = df[inputs].mean(axis=1)
+        df = df[df['Input Sum'] > count_threshold]
         inputs = ['Input Sum'] * len(outputs)
-        df = df[df['Input Mean'] > 0]
     else:
         if len(outputs) != len(inputs):
             raise Exception(
@@ -105,19 +109,25 @@ def get_summary_df(df,
             )
     output2input_dict = {}
     for output_col, input_col in zip(outputs, inputs):
+        df[output_col] = np.where(df[output_col] > count_threshold,
+                                  df[output_col], 0)
+        df[input_col] = np.where(df[input_col] > count_threshold,
+                                 df[input_col], 0)
         if verbose:
             print("Comparing input", input_col, "with output", output_col)
         df[output_col + '_odds_ratio'] = np.divide(df[output_col],
                                                    df[input_col])
         output2input_dict[output_col] = input_col
 
-    from scipy.stats import mannwhitneyu
     constructs_ids = []
     cless = []
-    #tissues = []
     output_sites = []
     input_sites = []
     mws = []
+    if estimate_cells:
+        from faust.utilities import estimate_cell_input
+        estimated_cells_input = []
+        estimated_cells_output = []
     for construct_id in tqdm(df['Target Gene'].unique(),
                              desc='Looping through target genes'):
         experiment = df[df['Target Gene'] == construct_id]
@@ -138,36 +148,28 @@ def get_summary_df(df,
                 mw = mannwhitneyu(a, b, alternative='two-sided')
                 cless.append(mw.statistic / len(a) / len(b))
                 mws.append(mw.pvalue)
-            output_sites.append(odds_ratio.split('_odds_ratio')[0])
-            input_sites.append(
-                output2input_dict[odds_ratio.split('_odds_ratio')[0]])
+            output_site = odds_ratio.split('_odds_ratio')[0]
+            output_sites.append(output_site)
+            input_site = output2input_dict[odds_ratio.split('_odds_ratio')[0]]
+            input_sites.append(input_site)
             constructs_ids.append(construct_id)
+            if estimate_cells:
+                estimated_cells_input.append(
+                    estimate_cell_input(df, input_site, construct_id,
+                                        count_threshold))
+                estimated_cells_output.append(
+                    estimate_cell_input(df, output_site, construct_id,
+                                        count_threshold))
 
     summary_df = pd.DataFrame(constructs_ids, columns=['gene'])
-    #  summary_df['tissue'] = tissues
     summary_df['output_site'] = output_sites
     summary_df['input_site'] = input_sites
     summary_df['CommonLanguageEffectSize'] = cless
     summary_df['MannWhitneyP'] = mws
-    #    from statsmodels.stats.multitest import fdrcorrection
-    #    if summary_df['MannWhitneyP'].isnull().sum() > 0:
-    #        # this might cause issues in older python versions...
-    #        i2mwp = summary_df.reset_index()['MannWhitneyP'].to_dict()
-    #        i2mwp_real = {x: y for x, y in i2mwp.items() if not np.isnan(y)}
-    #        i2bhq_real = {
-    #            x: y
-    #            for x, y in zip(i2mwp_real.keys(),
-    #                            fdrcorrection(list(i2mwp_real.values()))[1])
-    #        }
-    #        summary_df['BH_q'] = [
-    #            i2bhq_real[i] if i in i2bhq_real.keys() else np.nan
-    #            for i in range(len(summary_df))
-    #        ]
-    #    else:
-    #        summary_df['BH_q'] = fdrcorrection(
-    #            summary_df['MannWhitneyP'].values, )[1]
-    from faust.utilities import nan_fdrcorrection_q
     summary_df['BH_q'] = nan_fdrcorrection_q(summary_df['MannWhitneyP'].values)
+    if estimate_cells:
+        summary_df['input_estimated_cell_count'] = estimated_cells_input
+        summary_df['output_estimated_cell_count'] = estimated_cells_output
     return summary_df
 
 
@@ -234,3 +236,185 @@ def get_replicate_aggregated_statistics(summary_df,
             'gene'].apply(lambda x: gene2aggregate_intersection_q[x])
     if not inplace:
         return summary_df
+
+
+def estimate_read_error_singlets(n_observed_unique_grna_umis, n_observed_zeros,
+                                 log2_counts_sum):
+    from scipy.optimize import bisect
+
+    left_side = lambda false_zeros: np.log(n_observed_unique_grna_umis /
+                                           (n_observed_zeros - false_zeros))
+    right_side = lambda false_zeros: log2_counts_sum / (
+        n_observed_unique_grna_umis - false_zeros)
+    f = lambda false_zeros: left_side(false_zeros) - right_side(false_zeros)
+    estimate = bisect(f, 0, n_observed_zeros)
+    return estimate / n_observed_zeros
+
+
+def predicted_input(n_possible_grna_umi, n_detected_grna_umi):
+    return n_possible_grna_umi * np.log(
+        n_possible_grna_umi / (n_possible_grna_umi - n_detected_grna_umi))
+
+
+def estimate_cell_input(df,
+                        sample,
+                        target_gene,
+                        count_threshold,
+                        target_gene_col='Target Gene'):
+    if type(target_gene) is str:
+        target_gene = [target_gene]
+    from faust.utilities import predicted_input
+    n_detected_grna_umi = (df[(df[target_gene_col].isin(target_gene)) & \
+                             (df[sample]>count_threshold)][sample]>0).sum()
+    n_possible_grna_umi = df[df[target_gene_col].isin(target_gene)].shape[0]
+    if n_possible_grna_umi == n_detected_grna_umi:
+        return np.nan
+    else:
+        return predicted_input(n_possible_grna_umi, n_detected_grna_umi)
+
+
+def get_mageck_compatible_df(df,
+                             sgRNA_col='Construct Barcode',
+                             gene_col='Construct IDs',
+                             UMI_col='UMI',
+                             append_UMI=True,
+                             output=None):
+    df = df.copy()
+    if append_UMI:
+        df['sgRNA'] = df[sgRNA_col] + '_' + df[UMI_col]
+    else:
+        df['sgRNA'] = df[sgRNA_col]
+    df['gene'] = df[gene_col]
+    df = df[['sgRNA', 'gene'] + list(df.columns[df.dtypes == int])]
+    if output is not None:
+        if output.endswith('.csv'):
+            df.to_csv(output, index=False)
+        else:
+            df.to_csv(output, index=False, sep='\t')
+    return df
+
+
+def get_mageck_ibar_compatible_df(df,
+                                  sgRNA_col='Construct Barcode',
+                                  gene_col='Construct IDs',
+                                  UMI_col='UMI',
+                                  output=None):
+    df = df.copy()
+
+    df['guide'] = df[sgRNA_col]
+    df['gene'] = df[gene_col]
+    df['barcode'] = df[UMI_col]
+    df = df[['gene', 'guide', 'barcode'] + list(df.columns[df.dtypes == int])]
+    if output is not None:
+        if not output.endswith('.csv'):
+            output = output + '.csv'
+        df.to_csv(output, index=False)
+    return df
+
+
+def get_zfc_compatible_df(df,
+                          sgRNA_col='Construct Barcode',
+                          gene_col='Construct IDs',
+                          UMI_col='UMI',
+                          ctrl_col=None,
+                          exp_col=None,
+                          output=None):
+    df = df.copy()
+
+    df['guide'] = df[sgRNA_col]
+    df['gene'] = df[gene_col]
+    df['barcode'] = df[UMI_col]
+    df['ctrl'] = df[ctrl_col]
+    df['exp'] = df[exp_col]
+    df = df[['gene', 'guide', 'barcode', 'ctrl', 'exp']]
+    if output is not None:
+        df.to_csv(output, index=False, sep='\t')
+    return df
+
+
+def get_riger_compatible_df(df,
+                            sgRNA_col='Construct Barcode',
+                            UMI_col='UMI',
+                            append_UMI=True,
+                            gene_col='Construct IDs',
+                            score_col=None,
+                            rank_col=None):
+    df = df.copy()
+    if append_UMI:
+        df['Construct'] = df[sgRNA_col] + '_' + df[UMI_col]
+    else:
+        df['Construct'] = df[sgRNA_col]
+    df['GeneSymbol'] = df[gene_col]
+    df['NormalizedScore'] = df[score_col]
+    df = df.sort_values(rank_col)
+    df['Construct Rank'] = df.reset_index().index.values
+    df['HairpinWeight'] = 1.0
+    # Construct
+    #    The name of the hairpin.
+    # GeneSymbol
+    #    A unique name for the gene.
+    # NormalizedScore
+    #   The hairpin score.
+    # Construct Rank
+    #    The hairpin rank.
+    # HairpinWeight
+    #  0 to 1--0 is unweighted
+    return df[[
+        'Construct', 'GeneSymbol', 'NormalizedScore', 'Construct Rank',
+        'HairpinWeight'
+    ]]
+
+
+def run_alternative_test(df,
+                         test=None,
+                         exp_col=None,
+                         ctrl_col=None,
+                         sgRNA_col='Construct Barcode',
+                         gene_col='Construct IDs',
+                         UMI_col='UMI',
+                         output=''):
+    from faust.utilities import get_mageck_compatible_df, get_mageck_ibar_compatible_df, get_zfc_compatible_df
+    implemented_tests = ['mageck', 'mageck-ibar', 'zfc']
+    if test not in implemented_tests:  #+['riger']:
+        raise Exception("test must be one of {}".format(implemented_tests))
+    if output == '' or type(output) != str:
+        raise Exception("output must be a non-null string")
+    if test == 'mageck':
+        transformed_df = get_mageck_compatible_df(df,
+                                                  output=output,
+                                                  gene_col=gene_col,
+                                                  sgRNA_col=sgRNA_col,
+                                                  UMI_col=UMI_col)
+        command = 'mageck test -k {0} -t "{1}" -c "{2}" -n {0}'.format(
+            output, exp_col, ctrl_col)
+        primary_output = "{}.gene_summary.txt".format(output)
+        secondary_output = None
+    elif test == 'mageck-ibar':
+        transformed_df = get_mageck_ibar_compatible_df(df,
+                                                       output=output,
+                                                       gene_col=gene_col,
+                                                       sgRNA_col=sgRNA_col,
+                                                       UMI_col=UMI_col)
+        maxreps = transformed_df['gene'].value_counts().max() + 1
+        if not output.endswith('.csv'):
+            output = output + '.csv'
+        command = 'mageck-ibar --RRApath "RRA --max-sgrnapergene-permutation {3}" -i {0} -t "{1}" -c "{2}" -o {0}'.format(
+            output, exp_col, ctrl_col, maxreps)
+        primary_output = output + ".gene.high.txt"
+        secondary_output = output + ".gene.low.txt"
+    elif test == 'zfc':
+        transformed_df = get_zfc_compatible_df(df,
+                                               exp_col=exp_col,
+                                               ctrl_col=ctrl_col,
+                                               output=output,
+                                               gene_col=gene_col,
+                                               sgRNA_col=sgRNA_col,
+                                               UMI_col=UMI_col)
+        command = "zfc --input {0} -o {1}".format(output, output + '_zfc')
+        primary_output = "{}_zfc_gene.txt".format(output)
+        secondary_output = None
+    os.system(command)
+    if secondary_output is None:
+        return pd.read_table(primary_output)
+    else:
+        return pd.read_table(primary_output), pd.read_table(secondary_output)
