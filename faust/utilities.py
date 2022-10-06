@@ -166,7 +166,7 @@ def get_summary_df(df,
     #    else:
     #        summary_df['BH_q'] = fdrcorrection(
     #            summary_df['MannWhitneyP'].values, )[1]
-    from fits.utilities import nan_fdrcorrection_q
+    from faust.utilities import nan_fdrcorrection_q
     summary_df['BH_q'] = nan_fdrcorrection_q(summary_df['MannWhitneyP'].values)
     return summary_df
 
@@ -203,7 +203,7 @@ def get_replicate_aggregated_statistics(summary_df,
 
     from statsmodels.stats.multitest import fdrcorrection
     from scipy.stats import combine_pvalues
-    from fits.utilities import nan_fdrcorrection_q
+    from faust.utilities import nan_fdrcorrection_q
 
     if not inplace:
         summary_df = summary_df.copy()

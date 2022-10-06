@@ -21,13 +21,13 @@ def get_requirements(path):
 install_requires = get_requirements('requirements.txt')
 
 setup(
-    name='fits',
+    name='faust',
     version='0.1dev',
     author='Samuel C. Markson',
     author_email='smarkson@alum.mit.edu',
     install_requires=install_requires, 
     packages=find_packages(),
-    scripts=['scripts/fits'],
+    scripts=['scripts/faust'],
     license='BSD',
     description='for CRISPR screen analysis',
     include_package_data = True,
