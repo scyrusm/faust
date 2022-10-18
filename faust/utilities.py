@@ -456,21 +456,22 @@ def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid
         try:
             construct, umi = seq_sgrna.split(prefix)
             umi = umi[0:6]
-            construct2counts[construct][umi] += 1
-            construct2quality[conditions[seq_barcode]][construct][umi] += np.mean([ord(x) for x in qual_sgrna])
+            construct2counts[seq_barcode][construct][umi] += 1
+            construct2quality[seq_barcode][construct][umi] += np.mean([ord(x) for x in qual_sgrna])
 
         except:
             pass
 
-    df = pd.concat([
+    df1 = pd.concat([
         pd.DataFrame.from_dict(construct2counts[key]).stack().rename(
             conditions[key]) for key in construct2counts.keys()
     ],
                    axis=1)
-    df.to_csv(output, index=False)
-    df = pd.concat([
+    df1.to_csv(output, index=False)
+    df2 = pd.concat([
         pd.DataFrame.from_dict(construct2quality[key]).stack().rename(
             conditions[key]) for key in construct2quality.keys()
     ],
                    axis=1)
-    df.to_csv(quality_output, index=False)
+    df2 = df2/df1
+    df2.to_csv(quality_output, index=False)
