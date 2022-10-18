@@ -3,3 +3,6 @@ pandas
 scipy
 seaborn
 statsmodels
+tqdm
+pyfastx
+click

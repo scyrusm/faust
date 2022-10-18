@@ -1,14 +1,14 @@
 #! /usr/bin/env python
 
 import click
-import fits
+import faust
 import pkg_resources
 
 
 @click.group()
-@click.version_option(version=pkg_resources.require("fits")[0].version)
+@click.version_option(version=pkg_resources.require("faust")[0].version)
 def cli():
-    """Fits is a set of tools for analyzing CRISPR screen data.  Let's get FITS!  
+    """FAUST (the FITS Algorithms for UMI-based Screens of T cells) is a set of tools for analyzing T cell CRISPR screen data.  Let's get FITS!  
     """
 
 
@@ -18,9 +18,11 @@ def cli():
 )
 @click.argument('sgrna_input', type=click.Path(exists=True), nargs=1)
 @click.argument('barcode_input', type=click.Path(exists=True), nargs=1)
-def count(sgrna_input, barcode_input):
+def count(sgrna_input, barcode_input, valid_constructs, valid_umis, conditions,
+          output):
     from faust.utilities import count_gpp_output
-    count_gpp_output(sgrna_input, barcode_input)
+    count_gpp_output(sgRNA_input, barcode_input, valid_constructs, valid_umis,
+                     conditions, output)
 
 
 if __name__ == '__main__':
