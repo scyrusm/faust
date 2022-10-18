@@ -420,7 +420,7 @@ def run_alternative_test(df,
         return pd.read_table(primary_output), pd.read_table(secondary_output)
 
 
-def count_gpp_output(sgRNA_input, barcode_input, valid_constructs, valid_umis,
+def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid_umis,
                      conditions, output, quality_output):
     from tqdm import tqdm
     import pyfastx
