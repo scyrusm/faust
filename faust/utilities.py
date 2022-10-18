@@ -419,23 +419,46 @@ def run_alternative_test(df,
     else:
         return pd.read_table(primary_output), pd.read_table(secondary_output)
 
-def count_gpp_output(sgRNA_input, barcode_input):
+
+def count_gpp_output(sgRNA_input, barcode_input, valid_constructs, valid_umis,
+                     conditions, output):
     from tqdm import tqdm
     import pyfastx
-    umis = np.genfromtxt('umis.txt',dtype=str)
 
-    constructs = np.genfromtxt('constructs.txt',dtype=str)
-    construct2counts = {construct:{umi:0 for umi in umis} for construct in constructs}
+    constructs = np.genfromtxt(valid_constructs, dtype=str)
+    umis = np.genfromtxt(valid_umis, dtype=str)
+    conditions = pd.read_csv(conditions, header=None).set_index(0)[1].to_dict()
+
+    #    construct2counts = {construct:{umi:0 for umi in umis} for construct in constructs}
+    construct2counts = {
+        condition:
+        {construct: {umi: 0
+                     for umi in umis}
+         for construct in constructs}
+        for condition in conditions.keys()
+        if type(conditions[condition]) == str
+    }
+
     sgrna = pyfastx.Fastx(sgRNA_input)
     index = pyfastx.Fastx(barcode_input)
-    for (name_sgrna,seq_sgrna,qual_sgrna,comment_sgrna), (name_barcode, seq_barcode, qual_barcode, comment_barcode) in zip(tqdm(sgrna, desc='looping through fastq'), index):
+    for (name_sgrna, seq_sgrna, qual_sgrna,
+         comment_sgrna), (name_barcode, seq_barcode, qual_barcode,
+                          comment_barcode) in zip(
+                              tqdm(sgrna, desc='looping through fastq'),
+                              index):
         try:
             construct, umi = seq_sgrna.split(prefix)
             umi = umi[0:6]
             construct2counts[construct][umi] += 1
         except:
             pass
-    df = pd.DataFrame.from_dict(construct2counts, 'index')#.T.reset_index()
-    df = pd.DataFrame(df.stack()).reset_index()
-    df.columns = ['Construct','UMI','count']    
-    df.to_csv('test.csv',index=False)
+
+# df = pd.DataFrame.from_dict(construct2counts, 'index')#.T.reset_index()
+# df = pd.DataFrame(df.stack()).reset_index()
+# df.columns = ['Construct','UMI','count']
+    df = pd.concat([
+        pd.DataFrame.from_dict(construct2counts[key]).stack().rename(
+            conditions[key]) for key in construct2counts.keys()
+    ],
+                   axis=1)
+    df.to_csv(output, index=False)
