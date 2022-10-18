@@ -10,5 +10,18 @@ import pkg_resources
 def cli():
     """Fits is a set of tools for analyzing CRISPR screen data.  Let's get FITS!  
     """
+
+
+@cli.command(
+    help=
+    "Reads Gene Perturbation Platform (GPP) output and aggregates into a count matrix"
+)
+@click.argument('sgrna_input', type=click.Path(exists=True), nargs=1)
+@click.argument('barcode_input', type=click.Path(exists=True), nargs=1)
+def count(sgrna_input, barcode_input):
+    from faust.utilities import count_gpp_output
+    count_gpp_output(sgrna_input, barcode_input)
+
+
 if __name__ == '__main__':
     cli()
