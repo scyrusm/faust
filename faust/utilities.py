@@ -421,7 +421,7 @@ def run_alternative_test(df,
 
 
 def count_gpp_output(sgRNA_input, barcode_input, valid_constructs, valid_umis,
-                     conditions, output):
+                     conditions, output, quality_output):
     from tqdm import tqdm
     import pyfastx
 
@@ -429,8 +429,15 @@ def count_gpp_output(sgRNA_input, barcode_input, valid_constructs, valid_umis,
     umis = np.genfromtxt(valid_umis, dtype=str)
     conditions = pd.read_csv(conditions, header=None).set_index(0)[1].to_dict()
 
-    #    construct2counts = {construct:{umi:0 for umi in umis} for construct in constructs}
     construct2counts = {
+        condition:
+        {construct: {umi: 0
+                     for umi in umis}
+         for construct in constructs}
+        for condition in conditions.keys()
+        if type(conditions[condition]) == str
+    }
+    construct2quality = {
         condition:
         {construct: {umi: 0
                      for umi in umis}
@@ -450,15 +457,20 @@ def count_gpp_output(sgRNA_input, barcode_input, valid_constructs, valid_umis,
             construct, umi = seq_sgrna.split(prefix)
             umi = umi[0:6]
             construct2counts[construct][umi] += 1
+            construct2quality[conditions[seq_barcode]][construct][umi] += np.mean([ord(x) for x in qual_sgrna])
+
         except:
             pass
 
-# df = pd.DataFrame.from_dict(construct2counts, 'index')#.T.reset_index()
-# df = pd.DataFrame(df.stack()).reset_index()
-# df.columns = ['Construct','UMI','count']
     df = pd.concat([
         pd.DataFrame.from_dict(construct2counts[key]).stack().rename(
             conditions[key]) for key in construct2counts.keys()
     ],
                    axis=1)
     df.to_csv(output, index=False)
+    df = pd.concat([
+        pd.DataFrame.from_dict(construct2quality[key]).stack().rename(
+            conditions[key]) for key in construct2quality.keys()
+    ],
+                   axis=1)
+    df.to_csv(quality_output, index=False)

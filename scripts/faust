@@ -18,11 +18,16 @@ def cli():
 )
 @click.argument('sgrna_input', type=click.Path(exists=True), nargs=1)
 @click.argument('barcode_input', type=click.Path(exists=True), nargs=1)
+@click.argument('valid_constructs', type=click.Path(exists=True), nargs=1)
+@click.argument('valid_umis', type=click.Path(exists=True), nargs=1)
+@click.argument('conditions', type=click.Path(exists=True), nargs=1)
+@click.argument('output', type=click.Path(exists=False), nargs=1)
+@click.argument('quality_output', nargs=1)
 def count(sgrna_input, barcode_input, valid_constructs, valid_umis, conditions,
-          output):
+          output, quality_output):
     from faust.utilities import count_gpp_output
-    count_gpp_output(sgRNA_input, barcode_input, valid_constructs, valid_umis,
-                     conditions, output)
+    count_gpp_output(sgrna_input, barcode_input, valid_constructs, valid_umis,
+                     conditions, output, quality_output)
 
 
 if __name__ == '__main__':
