@@ -421,9 +421,10 @@ def run_alternative_test(df,
 
 
 def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid_umis,
-                     conditions, output, quality_output):
+                     conditions, output, quality_output, approximate_construct_matching=False):
     from tqdm import tqdm
     import pyfastx
+    import Levenshtein
 
     constructs = np.genfromtxt(valid_constructs, dtype=str)
     umis = np.genfromtxt(valid_umis, dtype=str)
@@ -457,21 +458,34 @@ def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid
             construct, umi = seq_sgrna.split(prefix)
             umi = umi[0:6]
             construct2counts[seq_barcode][construct][umi] += 1
-            construct2quality[seq_barcode][construct][umi] += np.mean([ord(x) for x in qual_sgrna])
+            construct2quality[seq_barcode][construct][umi] += np.mean([ord(x)-33 for x in qual_sgrna])
 
         except:
-            pass
+            if approximate_construct_matching:
+                try:
+                    construct, umi = seq_sgrna.split(prefix)
+                    umi = umi[0:6]
+                    levenshtein_distances = [Levenshtein.distance(construct,x) for x in constructs]
+                    if np.min(levenshtein_distances)==1:
+                        construct = constructs[np.argmin(levenshtein_distances)]
+                    construct2counts[seq_barcode][construct][umi] += 1
+                    construct2quality[seq_barcode][construct][umi] += np.mean([ord(x)-33 for x in qual_sgrna])
+                except:
+                    pass
+
 
     df1 = pd.concat([
         pd.DataFrame.from_dict(construct2counts[key]).stack().rename(
             conditions[key]) for key in construct2counts.keys()
     ],
                    axis=1)
-    df1.to_csv(output, index=False)
+    df1.index.rename(['UMI','Construct'],inplace=True)
+    df1.to_csv(output, index=True)
     df2 = pd.concat([
         pd.DataFrame.from_dict(construct2quality[key]).stack().rename(
             conditions[key]) for key in construct2quality.keys()
     ],
                    axis=1)
+    df2.index.rename(['UMI','Construct'],inplace=True)
     df2 = df2/df1
-    df2.to_csv(quality_output, index=False)
+    df2.to_csv(quality_output, index=True)
