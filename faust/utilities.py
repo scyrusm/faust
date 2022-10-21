@@ -421,10 +421,12 @@ def run_alternative_test(df,
 
 
 def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid_umis,
-                     conditions, output, quality_output, approximate_construct_matching=False):
+                     conditions, output, quality_output, approximate_construct_matching=False,
+                     min_mean_read_quality_score=30):
     from tqdm import tqdm
     import pyfastx
     import Levenshtein
+#    import re
 
     constructs = np.genfromtxt(valid_constructs, dtype=str)
     umis = np.genfromtxt(valid_umis, dtype=str)
@@ -449,29 +451,50 @@ def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid
 
     sgrna = pyfastx.Fastx(sgRNA_input)
     index = pyfastx.Fastx(barcode_input)
+    success_counter = 0
+    read_qc_filter_counter = 0
+    counter = 0
     for (name_sgrna, seq_sgrna, qual_sgrna,
          comment_sgrna), (name_barcode, seq_barcode, qual_barcode,
                           comment_barcode) in zip(
                               tqdm(sgrna, desc='looping through fastq'),
                               index):
+        counter +=1
         try:
+#            prefix_range = [(m.start(), m.end()-1) for m in re.finditer(prefix, seq_sgrna)]
+#            construct = seq_sgrna[0:prefix_range[0]]
+#            umi = seq_sgrna[(prefix_range[1]+1):(prefix_range[1]+7)]
+#            umi_quality = np.mean([ord(x)-33 for x in qual_sgrna[(prefix_range[1]+1):(prefix_range[1]+7)]])
             construct, umi = seq_sgrna.split(prefix)
             umi = umi[0:6]
-            construct2counts[seq_barcode][construct][umi] += 1
-            construct2quality[seq_barcode][construct][umi] += np.mean([ord(x)-33 for x in qual_sgrna])
+            umi_quality = np.mean([ord(x)-33 for x in qual_sgrna])
+#            umi_quality = np.mean([ord(x)-33 for x in qual_sgrna[::-1][0:10]])  
+            if umi_quality>min_mean_read_quality_score:
+                construct2counts[seq_barcode][construct][umi] += 1
+                construct2quality[seq_barcode][construct][umi] += umi_quality
+                #construct2quality[seq_barcode][construct][umi] += umi_quality
+                success_counter += 1
+            else:
+                read_qc_filter_counter +=1
 
         except:
             if approximate_construct_matching:
                 try:
                     construct, umi = seq_sgrna.split(prefix)
                     umi = umi[0:6]
-                    levenshtein_distances = [Levenshtein.distance(construct,x) for x in constructs]
-                    if np.min(levenshtein_distances)==1:
-                        construct = constructs[np.argmin(levenshtein_distances)]
+                    distance = Levenshtein.hamming
+                    distances = [distance(construct,x) for x in constructs]
+                    if np.min(distances)==1:
+                        construct = constructs[np.argmin(distances)]
                     construct2counts[seq_barcode][construct][umi] += 1
                     construct2quality[seq_barcode][construct][umi] += np.mean([ord(x)-33 for x in qual_sgrna])
                 except:
-                    pass
+                    try:
+                        construct, umi = seq_sgrna.split(prefix)
+                        umi = umi[0:6]
+                        print(conditions[seq_barcode], construct, umi)
+                    except:
+                        pass
 
 
     df1 = pd.concat([
@@ -489,3 +512,5 @@ def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid
     df2.index.rename(['UMI','Construct'],inplace=True)
     df2 = df2/df1
     df2.to_csv(quality_output, index=True)
+    print('{0:.2f}%'.format(100*success_counter/counter), 'of reads successfully counted')
+    print('{0:.2f}%'.format(100*read_qc_filter_counter/counter), 'of reads ignored due to low qc')
