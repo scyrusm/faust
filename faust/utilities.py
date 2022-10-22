@@ -16,11 +16,11 @@ def read_gpp_output(
     folders :
         
     chipfile :
-         (Default value = None)
+        (Default value = None)
     barcode2gene_dict :
-         (Default value = None)
+        (Default value = None)
     indices :
-         (Default value = ['Construct Barcode')
+        (Default value = ['Construct Barcode')
     'Construct IDs' :
         
     'UMI' :
@@ -28,11 +28,12 @@ def read_gpp_output(
     'Target Gene'] :
         
     dropcols :
-         (Default value = [])
+        (Default value = [])
 
     Returns
     -------
 
+    
     """
     if chipfile is None and barcode2gene_dict is None:
         raise Exception(
@@ -85,10 +86,19 @@ def get_summary_df(df,
         
     outputs :
         
+    input_type :
+         (Default value = 'single')
+    verbose :
+         (Default value = True)
+    count_threshold :
+         (Default value = 1)
+    estimate_cells :
+         (Default value = True)
 
     Returns
     -------
 
+    
     """
     from tqdm import tqdm
     import pandas as pd
@@ -174,6 +184,17 @@ def get_summary_df(df,
 
 
 def nan_fdrcorrection_q(pvalues):
+    """
+
+    Parameters
+    ----------
+    pvalues :
+        
+
+    Returns
+    -------
+
+    """
     from statsmodels.stats.multitest import fdrcorrection
     pvalues = np.array(pvalues)
     realmask = ~np.isnan(pvalues)
@@ -192,13 +213,14 @@ def get_replicate_aggregated_statistics(summary_df,
     summary_df :
         
     aggregation_column :
-         (Default value = None)
+        (Default value = None)
     inplace :
-         (Default value = False)
+        (Default value = False)
 
     Returns
     -------
 
+    
     """
     if aggregation_column not in summary_df.columns:
         raise Exception("aggregation_column must be column in summary_df")
@@ -240,6 +262,21 @@ def get_replicate_aggregated_statistics(summary_df,
 
 def estimate_read_error_singlets(n_observed_unique_grna_umis, n_observed_zeros,
                                  log2_counts_sum):
+    """
+
+    Parameters
+    ----------
+    n_observed_unique_grna_umis :
+        
+    n_observed_zeros :
+        
+    log2_counts_sum :
+        
+
+    Returns
+    -------
+
+    """
     from scipy.optimize import bisect
 
     left_side = lambda false_zeros: np.log(n_observed_unique_grna_umis /
@@ -252,6 +289,19 @@ def estimate_read_error_singlets(n_observed_unique_grna_umis, n_observed_zeros,
 
 
 def predicted_input(n_possible_grna_umi, n_detected_grna_umi):
+    """
+
+    Parameters
+    ----------
+    n_possible_grna_umi :
+        
+    n_detected_grna_umi :
+        
+
+    Returns
+    -------
+
+    """
     return n_possible_grna_umi * np.log(
         n_possible_grna_umi / (n_possible_grna_umi - n_detected_grna_umi))
 
@@ -261,6 +311,25 @@ def estimate_cell_input(df,
                         target_gene,
                         count_threshold,
                         target_gene_col='Target Gene'):
+    """
+
+    Parameters
+    ----------
+    df :
+        
+    sample :
+        
+    target_gene :
+        
+    count_threshold :
+        
+    target_gene_col :
+         (Default value = 'Target Gene')
+
+    Returns
+    -------
+
+    """
     if type(target_gene) is str:
         target_gene = [target_gene]
     from faust.utilities import predicted_input
@@ -279,6 +348,27 @@ def get_mageck_compatible_df(df,
                              UMI_col='UMI',
                              append_UMI=True,
                              output=None):
+    """
+
+    Parameters
+    ----------
+    df :
+        
+    sgRNA_col :
+         (Default value = 'Construct Barcode')
+    gene_col :
+         (Default value = 'Construct IDs')
+    UMI_col :
+         (Default value = 'UMI')
+    append_UMI :
+         (Default value = True)
+    output :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     df = df.copy()
     if append_UMI:
         df['sgRNA'] = df[sgRNA_col] + '_' + df[UMI_col]
@@ -299,6 +389,25 @@ def get_mageck_ibar_compatible_df(df,
                                   gene_col='Construct IDs',
                                   UMI_col='UMI',
                                   output=None):
+    """
+
+    Parameters
+    ----------
+    df :
+        
+    sgRNA_col :
+         (Default value = 'Construct Barcode')
+    gene_col :
+         (Default value = 'Construct IDs')
+    UMI_col :
+         (Default value = 'UMI')
+    output :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     df = df.copy()
 
     df['guide'] = df[sgRNA_col]
@@ -319,6 +428,29 @@ def get_zfc_compatible_df(df,
                           ctrl_col=None,
                           exp_col=None,
                           output=None):
+    """
+
+    Parameters
+    ----------
+    df :
+        
+    sgRNA_col :
+         (Default value = 'Construct Barcode')
+    gene_col :
+         (Default value = 'Construct IDs')
+    UMI_col :
+         (Default value = 'UMI')
+    ctrl_col :
+         (Default value = None)
+    exp_col :
+         (Default value = None)
+    output :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     df = df.copy()
 
     df['guide'] = df[sgRNA_col]
@@ -339,6 +471,29 @@ def get_riger_compatible_df(df,
                             gene_col='Construct IDs',
                             score_col=None,
                             rank_col=None):
+    """
+
+    Parameters
+    ----------
+    df :
+        
+    sgRNA_col :
+         (Default value = 'Construct Barcode')
+    UMI_col :
+         (Default value = 'UMI')
+    append_UMI :
+         (Default value = True)
+    gene_col :
+         (Default value = 'Construct IDs')
+    score_col :
+         (Default value = None)
+    rank_col :
+         (Default value = None)
+
+    Returns
+    -------
+
+    """
     df = df.copy()
     if append_UMI:
         df['Construct'] = df[sgRNA_col] + '_' + df[UMI_col]
@@ -373,6 +528,31 @@ def run_alternative_test(df,
                          gene_col='Construct IDs',
                          UMI_col='UMI',
                          output=''):
+    """
+
+    Parameters
+    ----------
+    df :
+        
+    test :
+         (Default value = None)
+    exp_col :
+         (Default value = None)
+    ctrl_col :
+         (Default value = None)
+    sgRNA_col :
+         (Default value = 'Construct Barcode')
+    gene_col :
+         (Default value = 'Construct IDs')
+    UMI_col :
+         (Default value = 'UMI')
+    output :
+         (Default value = '')
+
+    Returns
+    -------
+
+    """
     from faust.utilities import get_mageck_compatible_df, get_mageck_ibar_compatible_df, get_zfc_compatible_df
     implemented_tests = ['mageck', 'mageck-ibar', 'zfc']
     if test not in implemented_tests:  #+['riger']:
@@ -420,13 +600,52 @@ def run_alternative_test(df,
         return pd.read_table(primary_output), pd.read_table(secondary_output)
 
 
-def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid_umis,
-                     conditions, output, quality_output, approximate_construct_matching=False,
-                     min_mean_read_quality_score=30):
+def count_gpp_output(sgRNA_input,
+                     barcode_input,
+                     prefix,
+                     valid_constructs,
+                     valid_umis,
+                     conditions,
+                     output,
+                     quality_output=None,
+                     approximate_construct_matching=False,
+                     min_mean_read_quality_score=30,
+                     verbose=True):
+    """
+
+    Parameters
+    ----------
+    sgRNA_input :
+        
+    barcode_input :
+        
+    prefix :
+        
+    valid_constructs :
+        
+    valid_umis :
+        
+    conditions :
+        
+    output :
+        
+    quality_output :
+         (Default value = None)
+    approximate_construct_matching :
+         (Default value = False)
+    min_mean_read_quality_score :
+         (Default value = 30)
+    verbose :
+         (Default value = True)
+
+    Returns
+    -------
+
+    """
     from tqdm import tqdm
     import pyfastx
-    import Levenshtein
-#    import re
+    if approximate_construct_matching:
+        import Levenshtein
 
     constructs = np.genfromtxt(valid_constructs, dtype=str)
     umis = np.genfromtxt(valid_umis, dtype=str)
@@ -440,14 +659,15 @@ def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid
         for condition in conditions.keys()
         if type(conditions[condition]) == str
     }
-    construct2quality = {
-        condition:
-        {construct: {umi: 0
-                     for umi in umis}
-         for construct in constructs}
-        for condition in conditions.keys()
-        if type(conditions[condition]) == str
-    }
+    if quality_output is not None:
+        construct2quality = {
+            condition:
+            {construct: {umi: 0
+                         for umi in umis}
+             for construct in constructs}
+            for condition in conditions.keys()
+            if type(conditions[condition]) == str
+        }
 
     sgrna = pyfastx.Fastx(sgRNA_input)
     index = pyfastx.Fastx(barcode_input)
@@ -459,23 +679,18 @@ def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid
                           comment_barcode) in zip(
                               tqdm(sgrna, desc='looping through fastq'),
                               index):
-        counter +=1
+        counter += 1
         try:
-#            prefix_range = [(m.start(), m.end()-1) for m in re.finditer(prefix, seq_sgrna)]
-#            construct = seq_sgrna[0:prefix_range[0]]
-#            umi = seq_sgrna[(prefix_range[1]+1):(prefix_range[1]+7)]
-#            umi_quality = np.mean([ord(x)-33 for x in qual_sgrna[(prefix_range[1]+1):(prefix_range[1]+7)]])
             construct, umi = seq_sgrna.split(prefix)
             umi = umi[0:6]
-            umi_quality = np.mean([ord(x)-33 for x in qual_sgrna])
-#            umi_quality = np.mean([ord(x)-33 for x in qual_sgrna[::-1][0:10]])  
-            if umi_quality>min_mean_read_quality_score:
+            umi_quality = np.mean([ord(x) - 33 for x in qual_sgrna])
+            if umi_quality > min_mean_read_quality_score:
                 construct2counts[seq_barcode][construct][umi] += 1
-                construct2quality[seq_barcode][construct][umi] += umi_quality
-                #construct2quality[seq_barcode][construct][umi] += umi_quality
+                if quality_output is not None:
+                    construct2quality[seq_barcode][construct][umi] += umi_quality
                 success_counter += 1
             else:
-                read_qc_filter_counter +=1
+                read_qc_filter_counter += 1
 
         except:
             if approximate_construct_matching:
@@ -483,34 +698,38 @@ def count_gpp_output(sgRNA_input, barcode_input, prefix, valid_constructs, valid
                     construct, umi = seq_sgrna.split(prefix)
                     umi = umi[0:6]
                     distance = Levenshtein.hamming
-                    distances = [distance(construct,x) for x in constructs]
-                    if np.min(distances)==1:
+                    distances = [distance(construct, x) for x in constructs]
+                    if np.min(distances) == 1:
                         construct = constructs[np.argmin(distances)]
                     construct2counts[seq_barcode][construct][umi] += 1
-                    construct2quality[seq_barcode][construct][umi] += np.mean([ord(x)-33 for x in qual_sgrna])
+                    if quality_output is not None:
+                        construct2quality[seq_barcode][construct][umi] += np.mean(
+                            [ord(x) - 33 for x in qual_sgrna])
                 except:
                     try:
                         construct, umi = seq_sgrna.split(prefix)
                         umi = umi[0:6]
-                        print(conditions[seq_barcode], construct, umi)
                     except:
                         pass
-
 
     df1 = pd.concat([
         pd.DataFrame.from_dict(construct2counts[key]).stack().rename(
             conditions[key]) for key in construct2counts.keys()
     ],
-                   axis=1)
-    df1.index.rename(['UMI','Construct'],inplace=True)
+                    axis=1)
+    df1.index.rename(['UMI', 'Construct'], inplace=True)
     df1.to_csv(output, index=True)
-    df2 = pd.concat([
-        pd.DataFrame.from_dict(construct2quality[key]).stack().rename(
-            conditions[key]) for key in construct2quality.keys()
-    ],
-                   axis=1)
-    df2.index.rename(['UMI','Construct'],inplace=True)
-    df2 = df2/df1
-    df2.to_csv(quality_output, index=True)
-    print('{0:.2f}%'.format(100*success_counter/counter), 'of reads successfully counted')
-    print('{0:.2f}%'.format(100*read_qc_filter_counter/counter), 'of reads ignored due to low qc')
+    if quality_output is not None:
+        df2 = pd.concat([
+            pd.DataFrame.from_dict(construct2quality[key]).stack().rename(
+                conditions[key]) for key in construct2quality.keys()
+        ],
+                        axis=1)
+        df2.index.rename(['UMI', 'Construct'], inplace=True)
+        df2 = df2 / df1
+        df2.to_csv(quality_output, index=True)
+    if verbose:
+        print('{0:.2f}%'.format(100 * success_counter / counter),
+              'of reads successfully counted')
+        print('{0:.2f}%'.format(100 * read_qc_filter_counter / counter),
+              'of reads ignored due to low qc')

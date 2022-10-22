@@ -23,12 +23,38 @@ def cli():
 @click.argument('valid_umis', type=click.Path(exists=True), nargs=1)
 @click.argument('conditions', type=click.Path(exists=True), nargs=1)
 @click.argument('output', type=click.Path(exists=False), nargs=1)
-@click.argument('quality_output', nargs=1)
-def count(sgrna_input, barcode_input, prefix, valid_constructs, valid_umis, conditions,
-          output, quality_output):
+@click.option(
+    '--quality_output',
+    help=
+    'specifies the path and filename of output for the quality file (indicating the mean -10 log10(read error rate)',
+    default=None)
+@click.option(
+    '--approximate_construct_matching',
+    help=
+    'specifies whether constructs should be matched fuzzily (allowing for matching within Levenshtein distance of 1)',
+    default=False)
+@click.option('--min_mean_read_quality_score', help='', default=30)
+@click.option(
+    '--verbose',
+    help=
+    'specifies whether program should print run information (e.g. read counting %) to standard output',
+    default=False)
+def count(sgrna_input, barcode_input, prefix, valid_constructs, valid_umis,
+          conditions, output, quality_output, approximate_construct_matching,
+          min_mean_read_quality_score, verbose):
     from faust.utilities import count_gpp_output
-    count_gpp_output(sgrna_input, barcode_input, prefix, valid_constructs, valid_umis,
-                     conditions, output, quality_output)
+    count_gpp_output(
+        sgrna_input,
+        barcode_input,
+        prefix,
+        valid_constructs,
+        valid_umis,
+        conditions,
+        output,
+        quality_output=quality_output,
+        verbose=verbose,
+        min_mean_read_quality_score=min_mean_read_quality_score,
+        approximate_construct_matching=approximate_construct_matching)
 
 
 if __name__ == '__main__':
