@@ -609,9 +609,12 @@ def count_gpp_output(sgRNA_input,
                      output,
                      quality_output=None,
                      approximate_construct_matching=False,
-                     min_mean_read_quality_score=30,
+                     min_mean_read_quality_score=0,
                      min_min_read_quality_score=0,
-                     verbose=True):
+                     read_quality_start=32,
+                     read_quality_end=38,
+                     verbose=True,
+                     ):
     """
 
     Parameters
@@ -686,7 +689,7 @@ def count_gpp_output(sgRNA_input,
         try:
             construct, umi = seq_sgrna.split(prefix)
             umi = umi[0:6]
-            umi_quality = [ord(x) - 33 for x in qual_sgrna]
+            umi_quality = np.array([ord(x) - 33 for x in qual_sgrna])[read_quality_start:(read_quality_end+1)]
             if (np.mean(umi_quality) >= min_mean_read_quality_score) and (np.min(umi_quality) >= min_min_read_quality_score):
                 construct2counts[seq_barcode][construct][umi] += 1
                 if quality_output is not None:
