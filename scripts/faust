@@ -33,7 +33,16 @@ def cli():
     help=
     'specifies whether constructs should be matched fuzzily (allowing for matching within Levenshtein distance of 1)',
     default=False)
-@click.option('--min_mean_read_quality_score', help='', default=30)
+@click.option(
+    '--min_mean_read_quality_score',
+    help=
+    'Specifies the minimum mean base quality score for construct+UMI read to accept count',
+    default=30)
+@click.option(
+    '--min_min_read_quality_score',
+    help=
+    'Specifies the minimum minimum base quality score for construct+UMI read to accept count',
+    default=0)
 @click.option(
     '--verbose',
     help=
@@ -41,7 +50,7 @@ def cli():
     default=False)
 def count(sgrna_input, barcode_input, prefix, valid_constructs, valid_umis,
           conditions, output, quality_output, approximate_construct_matching,
-          min_mean_read_quality_score, verbose):
+          min_mean_read_quality_score, min_min_read_quality_score, verbose):
     from faust.utilities import count_gpp_output
     count_gpp_output(
         sgrna_input,
@@ -54,6 +63,7 @@ def count(sgrna_input, barcode_input, prefix, valid_constructs, valid_umis,
         quality_output=quality_output,
         verbose=verbose,
         min_mean_read_quality_score=min_mean_read_quality_score,
+        min_min_read_quality_score=min_min_read_quality_score,
         approximate_construct_matching=approximate_construct_matching)
 
 
