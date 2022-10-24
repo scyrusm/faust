@@ -32,7 +32,7 @@ def cli():
     '--approximate_construct_matching',
     help=
     'specifies whether constructs should be matched fuzzily (allowing for matching within Levenshtein distance of 1)',
-    default=False)
+    is_flag=True)
 @click.option(
     '--min_mean_read_quality_score',
     help=
@@ -47,7 +47,7 @@ def cli():
     '--verbose',
     help=
     'specifies whether program should print run information (e.g. read counting %) to standard output',
-    default=False)
+    is_flag=True)
 def count(sgrna_input, barcode_input, prefix, valid_constructs, valid_umis,
           conditions, output, quality_output, approximate_construct_matching,
           min_mean_read_quality_score, min_min_read_quality_score, verbose):
