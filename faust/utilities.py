@@ -73,7 +73,9 @@ def get_summary_df(df,
                    input_type='single',
                    verbose=True,
                    count_threshold=1,
-                   estimate_cells=True):
+                   estimate_cells=True,
+                   gene_col='Target Gene',
+                   alternative='two-sided'):
     """
 
     Parameters
@@ -138,10 +140,10 @@ def get_summary_df(df,
         from faust.utilities import estimate_cell_input
         estimated_cells_input = []
         estimated_cells_output = []
-    for construct_id in tqdm(df['Target Gene'].unique(),
+    for construct_id in tqdm(df[gene_col].unique(),
                              desc='Looping through target genes'):
-        experiment = df[df['Target Gene'] == construct_id]
-        control = df[df['Target Gene'].isin(controls)]
+        experiment = df[df[gene_col] == construct_id]
+        control = df[df[gene_col].isin(controls) & (df[gene_col] != construct_id)] # This is so there is no overlap between the experiment and control groups
         for odds_ratio in [
                 x for x in experiment.columns if x.endswith('_odds_ratio')
         ]:
@@ -155,7 +157,7 @@ def get_summary_df(df,
                 mws.append(np.nan)
 
             else:
-                mw = mannwhitneyu(a, b, alternative='two-sided')
+                mw = mannwhitneyu(a, b, alternative=alternative)
                 cless.append(mw.statistic / len(a) / len(b))
                 mws.append(mw.pvalue)
             output_site = odds_ratio.split('_odds_ratio')[0]
@@ -375,7 +377,7 @@ def get_mageck_compatible_df(df,
     else:
         df['sgRNA'] = df[sgRNA_col]
     df['gene'] = df[gene_col]
-    df = df[['sgRNA', 'gene'] + list(df.columns[df.dtypes == int])]
+    df = df[['sgRNA', 'gene'] + list(df.columns[(df.dtypes == int) | (df.dtypes == float)])]
     if output is not None:
         if output.endswith('.csv'):
             df.to_csv(output, index=False)
