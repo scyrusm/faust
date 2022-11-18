@@ -143,7 +143,9 @@ def get_summary_df(df,
     for construct_id in tqdm(df[gene_col].unique(),
                              desc='Looping through target genes'):
         experiment = df[df[gene_col] == construct_id]
-        control = df[df[gene_col].isin(controls) & (df[gene_col] != construct_id)] # This is so there is no overlap between the experiment and control groups
+        control = df[df[gene_col].isin(controls) & (
+            df[gene_col] != construct_id
+        )]  # This is so there is no overlap between the experiment and control groups
         for odds_ratio in [
                 x for x in experiment.columns if x.endswith('_odds_ratio')
         ]:
@@ -377,7 +379,8 @@ def get_mageck_compatible_df(df,
     else:
         df['sgRNA'] = df[sgRNA_col]
     df['gene'] = df[gene_col]
-    df = df[['sgRNA', 'gene'] + list(df.columns[(df.dtypes == int) | (df.dtypes == float)])]
+    df = df[['sgRNA', 'gene'] +
+            list(df.columns[(df.dtypes == int) | (df.dtypes == float)])]
     if output is not None:
         if output.endswith('.csv'):
             df.to_csv(output, index=False)
@@ -561,62 +564,100 @@ def run_alternative_test(df,
         raise Exception("test must be one of {}".format(implemented_tests))
     if output == '' or type(output) != str:
         raise Exception("output must be a non-null string")
-    if test == 'mageck':
-        transformed_df = get_mageck_compatible_df(df,
-                                                  output=output,
-                                                  gene_col=gene_col,
-                                                  sgRNA_col=sgRNA_col,
-                                                  UMI_col=UMI_col)
-        command = 'mageck test -k {0} -t "{1}" -c "{2}" -n {0}'.format(
-            output, exp_col, ctrl_col)
-        primary_output = "{}.gene_summary.txt".format(output)
-        secondary_output = None
-    elif test == 'mageck-ibar':
-        transformed_df = get_mageck_ibar_compatible_df(df,
-                                                       output=output,
-                                                       gene_col=gene_col,
-                                                       sgRNA_col=sgRNA_col,
-                                                       UMI_col=UMI_col)
-        maxreps = transformed_df['gene'].value_counts().max() + 1
-        if not output.endswith('.csv'):
-            output = output + '.csv'
-        command = 'mageck-ibar --RRApath "RRA --max-sgrnapergene-permutation {3}" -i {0} -t "{1}" -c "{2}" -o {0}'.format(
-            output, exp_col, ctrl_col, maxreps)
-        primary_output = output + ".gene.high.txt"
-        secondary_output = output + ".gene.low.txt"
-    elif test == 'zfc':
-        transformed_df = get_zfc_compatible_df(df,
-                                               exp_col=exp_col,
-                                               ctrl_col=ctrl_col,
-                                               output=output,
-                                               gene_col=gene_col,
-                                               sgRNA_col=sgRNA_col,
-                                               UMI_col=UMI_col)
-        command = "zfc --input {0} -o {1}".format(output, output + '_zfc')
-        primary_output = "{}_zfc_gene.txt".format(output)
-        secondary_output = None
-    os.system(command)
-    if secondary_output is None:
-        return pd.read_table(primary_output)
+    if type(exp_col) is str:
+        if test == 'mageck':
+            transformed_df = get_mageck_compatible_df(df,
+                                                      output=output,
+                                                      gene_col=gene_col,
+                                                      sgRNA_col=sgRNA_col,
+                                                      UMI_col=UMI_col)
+            maxreps = transformed_df['gene'].value_counts().max() + 1
+            command = 'mageck test -k {0} -t "{1}" -c "{2}" -n {0} --additional-rra-parameters " --max-sgrnapergene-permutation {3}"'.format(
+                output, exp_col, ctrl_col, maxreps)
+            primary_output = "{}.gene_summary.txt".format(output)
+            secondary_output = None
+        elif test == 'mageck-ibar':
+            transformed_df = get_mageck_ibar_compatible_df(df,
+                                                           output=output,
+                                                           gene_col=gene_col,
+                                                           sgRNA_col=sgRNA_col,
+                                                           UMI_col=UMI_col)
+            maxreps = transformed_df['gene'].value_counts().max() + 1
+            if not output.endswith('.csv'):
+                output = output + '.csv'
+            command = 'mageck-ibar --RRApath "RRA --max-sgrnapergene-permutation {3}" -i {0} -t "{1}" -c "{2}" -o {0}'.format(
+                output, exp_col, ctrl_col, maxreps)
+            primary_output = output + ".gene.high.txt"
+            secondary_output = output + ".gene.low.txt"
+        elif test == 'zfc':
+            transformed_df = get_zfc_compatible_df(df,
+                                                   exp_col=exp_col,
+                                                   ctrl_col=ctrl_col,
+                                                   output=output,
+                                                   gene_col=gene_col,
+                                                   sgRNA_col=sgRNA_col,
+                                                   UMI_col=UMI_col)
+            command = "zfc --input {0} -o {1}".format(output, output + '_zfc')
+            primary_output = "{}_zfc_gene.txt".format(output)
+            secondary_output = None
+        os.system(command)
+        if secondary_output is None:
+            return pd.read_table(primary_output)
+        else:
+            return pd.read_table(primary_output), pd.read_table(
+                secondary_output)
+    elif type(exp_col) is list:
+        dfs_to_be_merged = [
+            run_alternative_test(df,
+                                 test=test,
+                                 exp_col=x,
+                                 ctrl_col=ctrl_col,
+                                 sgRNA_col=sgRNA_col,
+                                 gene_col=gene_col,
+                                 UMI_col=UMI_col,
+                                 output=output) for x in exp_col
+        ]
+        merged_df = None
+        for x, df_to_be_merged in zip(exp_col, dfs_to_be_merged):
+            if test == 'mageck-ibar':
+                genecol = 'group_id'
+                df_to_be_merged = pd.merge(df_to_be_merged[0],
+                                           df_to_be_merged[1],
+                                           on=genecol,
+                                           how='outer',
+                                           suffixes=('_high', '_low'))
+            else:
+                genecol = df_to_be_merged.columns[0]
+            df_to_be_merged.columns = [
+                col + '_' + x if col != genecol else col
+                for col in df_to_be_merged.columns
+            ]
+            if merged_df is None:
+                merged_df = df_to_be_merged
+            else:
+                merged_df = pd.merge(merged_df, df_to_be_merged, on=genecol)
+        return merged_df
+
     else:
-        return pd.read_table(primary_output), pd.read_table(secondary_output)
+        raise Exception("exp_col must be string, or list of strings")
 
 
-def count_gpp_output(sgRNA_input,
-                     barcode_input,
-                     prefix,
-                     valid_constructs,
-                     valid_umis,
-                     conditions,
-                     output,
-                     quality_output=None,
-                     approximate_construct_matching=False,
-                     min_mean_read_quality_score=0,
-                     min_min_read_quality_score=0,
-                     read_quality_start=32,
-                     read_quality_end=38,
-                     verbose=True,
-                     ):
+def count_gpp_output(
+    sgRNA_input,
+    barcode_input,
+    prefix,
+    valid_constructs,
+    valid_umis,
+    conditions,
+    output,
+    quality_output=None,
+    approximate_construct_matching=False,
+    min_mean_read_quality_score=0,
+    min_min_read_quality_score=0,
+    read_quality_start=32,
+    read_quality_end=38,
+    verbose=True,
+):
     """
 
     Parameters
@@ -691,11 +732,15 @@ def count_gpp_output(sgRNA_input,
         try:
             construct, umi = seq_sgrna.split(prefix)
             umi = umi[0:6]
-            umi_quality = np.array([ord(x) - 33 for x in qual_sgrna])[read_quality_start:(read_quality_end+1)]
-            if (np.mean(umi_quality) >= min_mean_read_quality_score) and (np.min(umi_quality) >= min_min_read_quality_score):
+            umi_quality = np.array([
+                ord(x) - 33 for x in qual_sgrna
+            ])[read_quality_start:(read_quality_end + 1)]
+            if (np.mean(umi_quality) >= min_mean_read_quality_score) and (
+                    np.min(umi_quality) >= min_min_read_quality_score):
                 construct2counts[seq_barcode][construct][umi] += 1
                 if quality_output is not None:
-                    construct2quality[seq_barcode][construct][umi] += umi_quality
+                    construct2quality[seq_barcode][construct][
+                        umi] += umi_quality
                 success_counter += 1
             else:
                 read_qc_filter_counter += 1
@@ -711,8 +756,8 @@ def count_gpp_output(sgRNA_input,
                         construct = constructs[np.argmin(distances)]
                     construct2counts[seq_barcode][construct][umi] += 1
                     if quality_output is not None:
-                        construct2quality[seq_barcode][construct][umi] += np.mean(
-                            [ord(x) - 33 for x in qual_sgrna])
+                        construct2quality[seq_barcode][construct][
+                            umi] += np.mean([ord(x) - 33 for x in qual_sgrna])
                 except:
                     try:
                         construct, umi = seq_sgrna.split(prefix)
