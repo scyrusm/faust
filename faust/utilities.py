@@ -75,7 +75,8 @@ def get_summary_df(df,
                    count_threshold=1,
                    estimate_cells=True,
                    gene_col='Target Gene',
-                   alternative='two-sided'):
+                   alternative='two-sided',
+                   downsample_control=False):
     """
 
     Parameters
@@ -140,8 +141,11 @@ def get_summary_df(df,
         from faust.utilities import estimate_cell_input
         estimated_cells_input = []
         estimated_cells_output = []
-    for construct_id in tqdm(df[gene_col].unique(),
-                             desc='Looping through target genes'):
+    construct_ids = df[gene_col].unique()
+    if verbose:
+        construct_ids = tqdm(construct_ids,
+                             desc='Looping through target genes')
+    for construct_id in construct_ids:
         experiment = df[df[gene_col] == construct_id]
         control = df[df[gene_col].isin(controls) & (
             df[gene_col] != construct_id
@@ -151,6 +155,19 @@ def get_summary_df(df,
         ]:
             a = experiment[odds_ratio].values
             b = control[odds_ratio].values
+            if downsample_control is not False:
+                if type(downsample_control) is not float:
+                    if (downsamplecontrol <= 0) or (downsample_control >= 1):
+                        raise Exception(
+                            "downsample_control must be False, or a float in (0,1)"
+                        )
+                subsample_mask = np.random.choice(
+                    [False, True],
+                    replace=True,
+                    p=[1 - downsample_control, downsample_control],
+                    size=len(b))
+                b = b[subsample_mask]
+
             if input_type == 'matched':
                 a = [x for x in a if not np.isinf(x) and not np.isnan(x)]
                 b = [x for x in b if not np.isinf(x) and not np.isnan(x)]
@@ -169,11 +186,17 @@ def get_summary_df(df,
             constructs_ids.append(construct_id)
             if estimate_cells:
                 estimated_cells_input.append(
-                    estimate_cell_input(df, input_site, construct_id,
-                                        count_threshold))
+                    estimate_cell_input(df,
+                                        input_site,
+                                        construct_id,
+                                        count_threshold,
+                                        target_gene_col=gene_col))
                 estimated_cells_output.append(
-                    estimate_cell_input(df, output_site, construct_id,
-                                        count_threshold))
+                    estimate_cell_input(df,
+                                        output_site,
+                                        construct_id,
+                                        count_threshold,
+                                        target_gene_col=gene_col))
 
     summary_df = pd.DataFrame(constructs_ids, columns=['gene'])
     summary_df['output_site'] = output_sites
@@ -341,6 +364,9 @@ def estimate_cell_input(df,
                              (df[sample]>count_threshold)][sample]>0).sum()
     n_possible_grna_umi = df[df[target_gene_col].isin(target_gene)].shape[0]
     if n_possible_grna_umi == n_detected_grna_umi:
+        print(
+            "Warning:  n_possible_grna_umi == n_detected_grna_umi. Poisson approximation invalid."
+        )
         return np.nan
     else:
         return predicted_input(n_possible_grna_umi, n_detected_grna_umi)
