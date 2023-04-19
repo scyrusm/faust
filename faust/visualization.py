@@ -15,25 +15,30 @@ def plot_top_hits(summary_df,
     summary_df :
         
     ascending :
-         (Default value = False)
+        (Default value = False)
     nhits :
-         (Default value = 10)
+        (Default value = 10)
     figsize :
-         (Default value = (9)
+        (Default value = (9)
     5) :
         
     fig :
-         (Default value = None)
+        (Default value = None)
     ax :
-         (Default value = None)
+        (Default value = None)
     sort_criterion :
-         (Default value = 'CommonLanguageEffectSize')
+        (Default value = 'CommonLanguageEffectSize')
     hue :
+        (Default value = None)
+    swarmviolin_kwargs :
+         (Default value = {})
+    selected_genes :
          (Default value = None)
 
     Returns
     -------
 
+    
     """
     import matplotlib.pyplot as plt
     from panopticon.visualization import swarmviolin

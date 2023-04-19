@@ -90,13 +90,19 @@ def get_summary_df(df,
     outputs :
         
     input_type :
-         (Default value = 'single')
+        (Default value = 'single')
     verbose :
-         (Default value = True)
+        (Default value = True)
     count_threshold :
-         (Default value = 1)
+        (Default value = 1)
     estimate_cells :
-         (Default value = True)
+        (Default value = True)
+    gene_col :
+         (Default value = 'Target Gene')
+    alternative :
+         (Default value = 'two-sided')
+    downsample_control :
+         (Default value = False)
 
     Returns
     -------
@@ -221,6 +227,7 @@ def nan_fdrcorrection_q(pvalues):
     Returns
     -------
 
+    
     """
     from statsmodels.stats.multitest import fdrcorrection
     pvalues = np.array(pvalues)
@@ -303,6 +310,7 @@ def estimate_read_error_singlets(n_observed_unique_grna_umis, n_observed_zeros,
     Returns
     -------
 
+    
     """
     from scipy.optimize import bisect
 
@@ -328,6 +336,7 @@ def predicted_input(n_possible_grna_umi, n_detected_grna_umi):
     Returns
     -------
 
+    
     """
     return n_possible_grna_umi * np.log(
         n_possible_grna_umi / (n_possible_grna_umi - n_detected_grna_umi))
@@ -351,11 +360,12 @@ def estimate_cell_input(df,
     count_threshold :
         
     target_gene_col :
-         (Default value = 'Target Gene')
+        (Default value = 'Target Gene')
 
     Returns
     -------
 
+    
     """
     if type(target_gene) is str:
         target_gene = [target_gene]
@@ -385,19 +395,20 @@ def get_mageck_compatible_df(df,
     df :
         
     sgRNA_col :
-         (Default value = 'Construct Barcode')
+        (Default value = 'Construct Barcode')
     gene_col :
-         (Default value = 'Construct IDs')
+        (Default value = 'Construct IDs')
     UMI_col :
-         (Default value = 'UMI')
+        (Default value = 'UMI')
     append_UMI :
-         (Default value = True)
+        (Default value = True)
     output :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     df = df.copy()
     if append_UMI:
@@ -427,17 +438,18 @@ def get_mageck_ibar_compatible_df(df,
     df :
         
     sgRNA_col :
-         (Default value = 'Construct Barcode')
+        (Default value = 'Construct Barcode')
     gene_col :
-         (Default value = 'Construct IDs')
+        (Default value = 'Construct IDs')
     UMI_col :
-         (Default value = 'UMI')
+        (Default value = 'UMI')
     output :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     df = df.copy()
 
@@ -466,21 +478,22 @@ def get_zfc_compatible_df(df,
     df :
         
     sgRNA_col :
-         (Default value = 'Construct Barcode')
+        (Default value = 'Construct Barcode')
     gene_col :
-         (Default value = 'Construct IDs')
+        (Default value = 'Construct IDs')
     UMI_col :
-         (Default value = 'UMI')
+        (Default value = 'UMI')
     ctrl_col :
-         (Default value = None)
+        (Default value = None)
     exp_col :
-         (Default value = None)
+        (Default value = None)
     output :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     df = df.copy()
 
@@ -509,21 +522,22 @@ def get_riger_compatible_df(df,
     df :
         
     sgRNA_col :
-         (Default value = 'Construct Barcode')
+        (Default value = 'Construct Barcode')
     UMI_col :
-         (Default value = 'UMI')
+        (Default value = 'UMI')
     append_UMI :
-         (Default value = True)
+        (Default value = True)
     gene_col :
-         (Default value = 'Construct IDs')
+        (Default value = 'Construct IDs')
     score_col :
-         (Default value = None)
+        (Default value = None)
     rank_col :
-         (Default value = None)
+        (Default value = None)
 
     Returns
     -------
 
+    
     """
     df = df.copy()
     if append_UMI:
@@ -566,23 +580,24 @@ def run_alternative_test(df,
     df :
         
     test :
-         (Default value = None)
+        (Default value = None)
     exp_col :
-         (Default value = None)
+        (Default value = None)
     ctrl_col :
-         (Default value = None)
+        (Default value = None)
     sgRNA_col :
-         (Default value = 'Construct Barcode')
+        (Default value = 'Construct Barcode')
     gene_col :
-         (Default value = 'Construct IDs')
+        (Default value = 'Construct IDs')
     UMI_col :
-         (Default value = 'UMI')
+        (Default value = 'UMI')
     output :
-         (Default value = '')
+        (Default value = '')
 
     Returns
     -------
 
+    
     """
     from faust.utilities import get_mageck_compatible_df, get_mageck_ibar_compatible_df, get_zfc_compatible_df
     implemented_tests = ['mageck', 'mageck-ibar', 'zfc']
@@ -703,19 +718,24 @@ def count_gpp_output(
     output :
         
     quality_output :
-         (Default value = None)
+        (Default value = None)
     approximate_construct_matching :
-         (Default value = False)
+        (Default value = False)
     min_mean_read_quality_score :
-         (Default value = 30)
+        (Default value = 30)
     min_min_read_quality_score :
-         (Default value = 0)
+        (Default value = 0)
     verbose :
-         (Default value = True)
+        (Default value = True)
+    read_quality_start :
+         (Default value = 32)
+    read_quality_end :
+         (Default value = 38)
 
     Returns
     -------
 
+    
     """
     from tqdm import tqdm
     import pyfastx
