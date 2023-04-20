@@ -24,11 +24,12 @@ If ``input_type`` is 'single', FAUST will take the row-wise sum over all input c
 If ``input_type`` is 'matched', FAUST will compute this factor of expansion for matched elements in `inputs` and `outputs`. 
 
 Let's suppose we want to test the null hypothesis :math:`H_0` that the factor of expansion :math:`F_e` between a common input aliquot and a particular lymph node is equally likely to be greater or lesser for gRNA-UMIs targeting gene1 vs. gRNA-UMIs targeting control loci.  
-To do this, set ``input_type`` to be 'single', `controls` to be '["control1","control2"]', `inputs` to be '["input1","input2"], and `outputs` to be '["ln1","ln2"]'.  
+To do this, set ``input_type`` to be 'single', `controls` to be ``["control1","control2"]``, `inputs` to be ``["input1","input2"]``, and `outputs` to be ``["ln1","ln2"]``.  
 FAUST will pool the counts for all the input aliquot measurements (we will test :math:`H_0` using a Mann-Whitney U test, so whether we sum or average these input counts won't affect our final result). 
-FAUST will then evalute :math:`H_0` separately for "ln1" and "ln2".  
+FAUST will then evalute :math:`H_0` separately for ln1 and ln2.  
 
 Let's now suppose we want to test the null hypothesis :math:`H_0` that the factor of expansion :math:`F_e` between a particular lymph node and a *matched* tumor is equally likely to be greater or lesser for gRNA-UMIs targeting gene1 vs. gRNA-UMIs targeting control loci.  
-To do this, set ``input_type`` to be 'matched', `controls` to be '["control1","control2"]', `inputs` to be '["ln1","ln2"], and `outputs` to be '["tumor1","tumor2"]'.  
-FAUST will then evalute :math:`H_0` between "ln1" and "tumor1", then "ln2" and "tumor2".
+To do this, set ``input_type`` to be 'matched', `controls` to be ``["control1","control2"]``, `inputs` to be ``["ln1","ln2"]``, and `outputs` to be ``["tumor1","tumor2"]``.  
+FAUST will then evalute :math:`H_0` between ln1 and tumor1, then ln2 and tumor2.
 That is, the ordering of `inputs` and `outputs` matters, and they should be lists of the same length. 
+Tried to run with ``input_type`` 'matched' with `inputs` and `outputs` of unequal lengths will raise an exception.
