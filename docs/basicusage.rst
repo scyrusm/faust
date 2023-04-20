@@ -11,8 +11,6 @@ The core functionality of FAUST may be found in the function :func:`faust.utilit
 This function expects a pandas dataframe `df` with the following example format:
 
  .. list-table::
-     :widths: 25 25 25 25 25 25 25 25 25
-     :header-rows: 1
 
     * - barcode
       - UMI
