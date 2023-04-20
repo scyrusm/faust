@@ -15,7 +15,7 @@ This function expects a pandas dataframe `df` with the following example format:
     :header-rows: 1
 
 The next argument, `controls` should be a list of control targets.  
-These generally correspond to gRNAs that target intergenic regions, or that target no site in the genome at all. In the table above, `controls` would take the value '["control1","control2"]'
+These generally correspond to gRNAs that target intergenic regions, or that target no site in the genome at all. In the table above, `controls` would take the value ``["control1","control2"]``
 
 The next arguments, `inputs` and `outputs`, should be a list of columns of `df` that correspond to input and output sites, respectively.
 FAUST will compute the ratio, for each gRNA-UMI, between the output and the input sites provided. 
