@@ -10,62 +10,9 @@ It is also possible to generate these counts directly with FAUST.
 The core functionality of FAUST may be found in the function :func:`faust.utilities.get_summary_df`.
 This function expects a pandas dataframe `df` with the following example format:
 
- .. list-table::
-
-    * - barcode
-      - UMI
-      - gene
-      - input1
-      - input2
-      - ln1
-      - ln2
-      - tumor1
-      - tumor2
-    * - TCGA...
-      - T...
-      - gene1
-      - 532
-      - 501
-      - 300
-      - 251
-      - 10000
-      - 5238
-    * - ATCG...
-      - C...
-      - gene2
-      - 102
-      - 112
-      - 10
-      - 11
-      - 12
-      - 23
-    * - GATC...
-      - G...
-      - gene3
-      - 400
-      - 390
-      - 17
-      - 21
-      - 33
-      - 12
-    * - CGAT...
-      - A...
-      - control1
-      - 310
-      - 290
-      - 177
-      - 212
-      - 120
-      - 242
-    * - AGCT...
-      - T...
-      - control2
-      - 310
-      - 290
-      - 177
-      - 212
-      - 120
-      - 242
+ .. csv-table:: example argument ``df`` for function :func:`faust.utilities.get_summary_df`
+    :file: examplesummarydf.csv    
+    :header-rows: 1
 
 The next argument, `controls` should be a list of control targets.  
 These generally correspond to gRNAs that target intergenic regions, or that target no site in the genome at all. In the table above, `controls` would take the value '["control1","control2"]'
