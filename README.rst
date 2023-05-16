@@ -10,6 +10,6 @@ Additional Documentation
 ========================
 
 For more in-depth documentation, see FAUST's `Read the
-Docs <https://https://fitsfaust.readthedocs.io>`__ page.
+Docs <https://fitsfaust.readthedocs.io>`__ page.
 
 
