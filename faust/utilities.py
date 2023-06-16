@@ -76,7 +76,9 @@ def get_summary_df(df,
                    estimate_cells=True,
                    gene_col='Target Gene',
                    alternative='two-sided',
-                   downsample_control=False):
+                   downsample_control=False,
+                   custom_test=None,
+                   custom_effect_size=None):
     """
 
     Parameters
@@ -143,6 +145,8 @@ def get_summary_df(df,
     output_sites = []
     input_sites = []
     mws = []
+    custom_tests = []
+    custom_effect_sizes = []
     if estimate_cells:
         from faust.utilities import estimate_cell_input
         estimated_cells_input = []
@@ -180,11 +184,21 @@ def get_summary_df(df,
             if len(a) == 0 or len(b) == 0:
                 cless.append(np.nan)
                 mws.append(np.nan)
+                if custom_test is not None:
+                    custom_tests.append(np.nan)
+                if custom_effect_size is not None:
+                    custom_effect_sizes.append(np.nan)
+
+
 
             else:
                 mw = mannwhitneyu(a, b, alternative=alternative)
                 cless.append(mw.statistic / len(a) / len(b))
                 mws.append(mw.pvalue)
+                if custom_test is not None:
+                    custom_tests.append(custom_test(a,b))
+                if custom_effect_size is not None:
+                    custom_effect_sizes.append(custom_effect_size(a,b))
             output_site = odds_ratio.split('_odds_ratio')[0]
             output_sites.append(output_site)
             input_site = output2input_dict[odds_ratio.split('_odds_ratio')[0]]
@@ -210,6 +224,10 @@ def get_summary_df(df,
     summary_df['CommonLanguageEffectSize'] = cless
     summary_df['MannWhitneyP'] = mws
     summary_df['BH_q'] = nan_fdrcorrection_q(summary_df['MannWhitneyP'].values)
+    if custom_test is not None:
+        summary_df['CustomTest'] = custom_tests
+    if custom_effect_size is not None:
+        summary_df['CustomEffectSize'] = custom_effect_sizes
     if estimate_cells:
         summary_df['input_estimated_cell_count'] = estimated_cells_input
         summary_df['output_estimated_cell_count'] = estimated_cells_output
