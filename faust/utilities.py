@@ -47,7 +47,10 @@ def read_gpp_output(
     dfss = []
     for folder in folders:
         dfs = []
-        for txt in [x for x in os.listdir(folder) if 'MATCH' not in x]:
+        for txt in [
+                x for x in os.listdir(folder)
+                if 'MATCH' not in x and not x.startswith('.')
+        ]:
             df = pd.read_table(folder + '/' + txt)
             umi = txt.split('-')[-1].replace('.txt', '')
             df['UMI'] = umi
@@ -76,7 +79,9 @@ def get_summary_df(df,
                    alternative='two-sided',
                    downsample_control=False,
                    custom_test=None,
-                   custom_effect_size=None):
+                   custom_effect_size=None,
+                   assume_equal_inputs=False,
+                   run_parallel=True):
     """
 
     Parameters
@@ -113,11 +118,89 @@ def get_summary_df(df,
     import pandas as pd
     from faust.utilities import nan_fdrcorrection_q
     from scipy.stats import mannwhitneyu
+    if input_type == 'single':
+        if run_parallel:
+            from joblib import Parallel, delayed
+            return pd.concat(
+                Parallel(n_jobs=-1, )(delayed(get_summary_df)(
+                    df[[gene_col, col] + inputs],
+                    df['Target Gene'].unique(),
+                    inputs, [col],
+                    run_parallel=False,
+                    input_type=input_type,
+                    verbose=verbose,
+                    count_threshold=count_threshold,
+                    estimate_cells=estimate_cells,
+                    gene_col=gene_col,
+                    alternative=alternative,
+                    downsample_control=downsample_control,
+                    custom_test=custom_test,
+                    custom_effect_size=custom_effect_size,
+                    assume_equal_inputs=assume_equal_inputs)
+                                      for col in outputs))
+        elif len(outputs) > 1:
+            return pd.concat([
+                get_summary_df(df[[gene_col, col] + inputs],
+                               df['Target Gene'].unique(),
+                               inputs, [col],
+                               run_parallel=False,
+                               input_type=input_type,
+                               verbose=verbose,
+                               count_threshold=count_threshold,
+                               estimate_cells=estimate_cells,
+                               gene_col=gene_col,
+                               alternative=alternative,
+                               downsample_control=downsample_control,
+                               custom_test=custom_test,
+                               custom_effect_size=custom_effect_size,
+                               assume_equal_inputs=assume_equal_inputs)
+                for col in outputs
+            ])
+    elif input_type == 'matched':
+        if run_parallel:
+            from joblib import Parallel, delayed
+            return pd.concat(
+                Parallel(n_jobs=4, )(delayed(get_summary_df)(
+                    df[[gene_col, col] + inputs],
+                    df['Target Gene'].unique(), [input], [col],
+                    run_parallel=False,
+                    input_type=input_type,
+                    verbose=verbose,
+                    count_threshold=count_threshold,
+                    estimate_cells=estimate_cells,
+                    gene_col=gene_col,
+                    alternative=alternative,
+                    downsample_control=downsample_control,
+                    custom_test=custom_test,
+                    custom_effect_size=custom_effect_size,
+                    assume_equal_inputs=assume_equal_inputs)
+                                     for input, col in zip(inputs, outputs)))
+        elif len(outputs) > 1:
+            return pd.concat([
+                get_summary_df(df[[gene_col, col] + inputs],
+                               df['Target Gene'].unique(), [input], [col],
+                               run_parallel=False,
+                               input_type=input_type,
+                               verbose=verbose,
+                               count_threshold=count_threshold,
+                               estimate_cells=estimate_cells,
+                               gene_col=gene_col,
+                               alternative=alternative,
+                               downsample_control=downsample_control,
+                               custom_test=custom_test,
+                               custom_effect_size=custom_effect_size,
+                               assume_equal_inputs=assume_equal_inputs)
+                for input, col in zip(inputs, outputs)
+            ])
 
     if input_type not in ['single', 'matched']:
         raise Exception("input_type must be one of 'single', 'matched'")
     df = df.copy()
-    if input_type == 'single':
+    if assume_equal_inputs:
+        df['Unit Input'] = count_threshold + 1
+        inputs = ['Unit Input'] * len(outputs)
+        print('Assuming equal inputs (ignoring "inputs" argument)')
+    elif input_type == 'single':
         df['Input Sum'] = df[inputs].sum(axis=1)
         df = df[df['Input Sum'] > count_threshold]
         inputs = ['Input Sum'] * len(outputs)
@@ -151,13 +234,14 @@ def get_summary_df(df,
         estimated_cells_output = []
     construct_ids = df[gene_col].unique()
     if verbose:
-        construct_ids = tqdm(construct_ids,
-                             desc='Looping through target genes')
+        construct_ids = tqdm(
+            construct_ids,
+            desc='Looping through target genes, output: {}'.format(outputs))
+
     for construct_id in construct_ids:
-        experiment = df[df[gene_col] == construct_id]
-        control = df[df[gene_col].isin(controls) & (
-            df[gene_col] != construct_id
-        )]  # This is so there is no overlap between the experiment and control groups
+        experiment = df.query('`{}`==@construct_id'.format(gene_col))
+        control = df.query('`{0}` in @controls'.format(gene_col)).query(
+            '`{}`!=@construct_id'.format(gene_col))
         for odds_ratio in [
                 x for x in experiment.columns if x.endswith('_odds_ratio')
         ]:
@@ -187,28 +271,20 @@ def get_summary_df(df,
                 if custom_effect_size is not None:
                     custom_effect_sizes.append(np.nan)
 
-
-
             else:
                 mw = mannwhitneyu(a, b, alternative=alternative)
                 cless.append(mw.statistic / len(a) / len(b))
                 mws.append(mw.pvalue)
                 if custom_test is not None:
-                    custom_tests.append(custom_test(a,b))
+                    custom_tests.append(custom_test(a, b))
                 if custom_effect_size is not None:
-                    custom_effect_sizes.append(custom_effect_size(a,b))
+                    custom_effect_sizes.append(custom_effect_size(a, b))
             output_site = odds_ratio.split('_odds_ratio')[0]
             output_sites.append(output_site)
             input_site = output2input_dict[odds_ratio.split('_odds_ratio')[0]]
             input_sites.append(input_site)
             constructs_ids.append(construct_id)
             if estimate_cells:
-                estimated_cells_input.append(
-                    estimate_cell_input(df,
-                                        input_site,
-                                        construct_id,
-                                        count_threshold,
-                                        target_gene_col=gene_col))
                 estimated_cells_output.append(
                     estimate_cell_input(df,
                                         output_site,
@@ -227,7 +303,6 @@ def get_summary_df(df,
     if custom_effect_size is not None:
         summary_df['CustomEffectSize'] = custom_effect_sizes
     if estimate_cells:
-        summary_df['input_estimated_cell_count'] = estimated_cells_input
         summary_df['output_estimated_cell_count'] = estimated_cells_output
     return summary_df
 
@@ -389,7 +464,10 @@ def estimate_cell_input(df,
     n_detected_grna_umi = (df[(df[target_gene_col].isin(target_gene)) & \
                              (df[sample]>count_threshold)][sample]>0).sum()
     n_possible_grna_umi = df[df[target_gene_col].isin(target_gene)].shape[0]
+
     if n_possible_grna_umi == n_detected_grna_umi:
+        #        from IPython.core.debugger import set_trace; set_trace()
+        print(n_possible_grna_umi, n_detected_grna_umi)
         print(
             "Warning:  n_possible_grna_umi == n_detected_grna_umi. Poisson approximation invalid."
         )
@@ -671,7 +749,7 @@ def run_alternative_test(df,
                 return df_to_be_merged
             else:
                 return pd.read_table(primary_output), pd.read_table(
-                secondary_output)
+                    secondary_output)
     elif type(exp_col) is list:
         dfs_to_be_merged = [
             run_alternative_test(df,
@@ -772,19 +850,25 @@ def count_gpp_output(
     conditions = pd.read_csv(conditions, header=None).set_index(0)[1].to_dict()
 
     construct2counts = {
-        condition:
-        {construct: {umi: 0
-                     for umi in umis}
-         for construct in constructs}
+        condition: {
+            construct: {
+                umi: 0
+                for umi in umis
+            }
+            for construct in constructs
+        }
         for condition in conditions.keys()
         if type(conditions[condition]) == str
     }
     if quality_output is not None:
         construct2quality = {
-            condition:
-            {construct: {umi: 0
-                         for umi in umis}
-             for construct in constructs}
+            condition: {
+                construct: {
+                    umi: 0
+                    for umi in umis
+                }
+                for construct in constructs
+            }
             for condition in conditions.keys()
             if type(conditions[condition]) == str
         }
@@ -794,11 +878,16 @@ def count_gpp_output(
     success_counter = 0
     read_qc_filter_counter = 0
     counter = 0
-    for (name_sgrna, seq_sgrna, qual_sgrna,
-         comment_sgrna), (name_barcode, seq_barcode, qual_barcode,
-                          comment_barcode) in zip(
-                              tqdm(sgrna, desc='looping through fastq'),
-                              index):
+    for line_sgrna, line_index in zip(
+            tqdm(sgrna, desc='looping through fastq'), index):
+        if len(line_sgrna) == 4:
+            name_sgrna, seq_sgrna, qual_sgrna, comment_sgrna = line_sgrna
+            name_barcode, seq_barcode, qual_barcode, comment_barcode = line_index
+        elif len(line_sgrna) == 3:
+            name_sgrna, seq_sgrna, qual_sgrna = line_sgrna
+            name_barcode, seq_barcode, qual_barcode = line_index
+        else:
+            raise Exception("Unexpected format of fastq!")
         counter += 1
         try:
             construct, umi = seq_sgrna.split(prefix)
