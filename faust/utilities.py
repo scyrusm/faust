@@ -81,7 +81,8 @@ def get_summary_df(df,
                    custom_test=None,
                    custom_effect_size=None,
                    assume_equal_inputs=False,
-                   run_parallel=True):
+                   run_parallel=True,
+                   control_and_experiment_exclusive=True):
     """
 
     Parameters
@@ -122,21 +123,23 @@ def get_summary_df(df,
         if run_parallel:
             from joblib import Parallel, delayed
             return pd.concat(
-                Parallel(n_jobs=-1, )(delayed(get_summary_df)(
-                    df[[gene_col, col] + inputs],
-                    df['Target Gene'].unique(),
-                    inputs, [col],
-                    run_parallel=False,
-                    input_type=input_type,
-                    verbose=verbose,
-                    count_threshold=count_threshold,
-                    estimate_cells=estimate_cells,
-                    gene_col=gene_col,
-                    alternative=alternative,
-                    downsample_control=downsample_control,
-                    custom_test=custom_test,
-                    custom_effect_size=custom_effect_size,
-                    assume_equal_inputs=assume_equal_inputs)
+                Parallel(n_jobs=-1, )(delayed(get_summary_df)
+                                      (df[[gene_col, col] + inputs],
+                                       df['Target Gene'].unique(),
+                                       inputs, [col],
+                                       run_parallel=False,
+                                       input_type=input_type,
+                                       verbose=verbose,
+                                       count_threshold=count_threshold,
+                                       estimate_cells=estimate_cells,
+                                       gene_col=gene_col,
+                                       alternative=alternative,
+                                       downsample_control=downsample_control,
+                                       custom_test=custom_test,
+                                       custom_effect_size=custom_effect_size,
+                                       assume_equal_inputs=assume_equal_inputs,
+                                       control_and_experiment_exclusive=
+                                       control_and_experiment_exclusive)
                                       for col in outputs))
         elif len(outputs) > 1:
             return pd.concat([
@@ -153,27 +156,31 @@ def get_summary_df(df,
                                downsample_control=downsample_control,
                                custom_test=custom_test,
                                custom_effect_size=custom_effect_size,
-                               assume_equal_inputs=assume_equal_inputs)
+                               assume_equal_inputs=assume_equal_inputs,
+                               control_and_experiment_exclusive=
+                               control_and_experiment_exclusive)
                 for col in outputs
             ])
     elif input_type == 'matched':
         if run_parallel:
             from joblib import Parallel, delayed
             return pd.concat(
-                Parallel(n_jobs=4, )(delayed(get_summary_df)(
-                    df[[gene_col, col] + inputs],
-                    df['Target Gene'].unique(), [input], [col],
-                    run_parallel=False,
-                    input_type=input_type,
-                    verbose=verbose,
-                    count_threshold=count_threshold,
-                    estimate_cells=estimate_cells,
-                    gene_col=gene_col,
-                    alternative=alternative,
-                    downsample_control=downsample_control,
-                    custom_test=custom_test,
-                    custom_effect_size=custom_effect_size,
-                    assume_equal_inputs=assume_equal_inputs)
+                Parallel(n_jobs=4, )(delayed(
+                    get_summary_df)(df[[gene_col, col] + inputs],
+                                    df['Target Gene'].unique(), [input], [col],
+                                    run_parallel=False,
+                                    input_type=input_type,
+                                    verbose=verbose,
+                                    count_threshold=count_threshold,
+                                    estimate_cells=estimate_cells,
+                                    gene_col=gene_col,
+                                    alternative=alternative,
+                                    downsample_control=downsample_control,
+                                    custom_test=custom_test,
+                                    custom_effect_size=custom_effect_size,
+                                    assume_equal_inputs=assume_equal_inputs,
+                                    control_and_experiment_exclusive=
+                                    control_and_experiment_exclusive)
                                      for input, col in zip(inputs, outputs)))
         elif len(outputs) > 1:
             return pd.concat([
@@ -189,7 +196,9 @@ def get_summary_df(df,
                                downsample_control=downsample_control,
                                custom_test=custom_test,
                                custom_effect_size=custom_effect_size,
-                               assume_equal_inputs=assume_equal_inputs)
+                               assume_equal_inputs=assume_equal_inputs,
+                               control_and_experiment_exclusive=
+                               control_and_experiment_exclusive)
                 for input, col in zip(inputs, outputs)
             ])
 
@@ -237,16 +246,25 @@ def get_summary_df(df,
         construct_ids = tqdm(
             construct_ids,
             desc='Looping through target genes, output: {}'.format(outputs))
-
+    if not control_and_experiment_exclusive:
+        control = df.query('`{0}` in @controls'.format(gene_col))
+        if downsample_control is not False:
+            if type(downsample_control) is not float:
+                if (downsamplecontrol <= 0) or (downsample_control >= 1):
+                    raise Exception(
+                        "downsample_control must be False, or a float in (0,1)"
+                    )
+            subsample_mask = np.random.choice(
+                [False, True],
+                replace=True,
+                p=[1 - downsample_control, downsample_control],
+                size=len(control))
+            control = control[subsample_mask]
     for construct_id in construct_ids:
         experiment = df.query('`{}`==@construct_id'.format(gene_col))
-        control = df.query('`{0}` in @controls'.format(gene_col)).query(
-            '`{}`!=@construct_id'.format(gene_col))
-        for odds_ratio in [
-                x for x in experiment.columns if x.endswith('_odds_ratio')
-        ]:
-            a = experiment[odds_ratio].values
-            b = control[odds_ratio].values
+        if control_and_experiment_exclusive:
+            control = df.query('`{0}` in @controls'.format(gene_col)).query(
+                '`{}`!=@construct_id'.format(gene_col))
             if downsample_control is not False:
                 if type(downsample_control) is not float:
                     if (downsamplecontrol <= 0) or (downsample_control >= 1):
@@ -257,8 +275,13 @@ def get_summary_df(df,
                     [False, True],
                     replace=True,
                     p=[1 - downsample_control, downsample_control],
-                    size=len(b))
-                b = b[subsample_mask]
+                    size=len(control))
+                control = control[subsample_mask]
+        for odds_ratio in [
+                x for x in experiment.columns if x.endswith('_odds_ratio')
+        ]:
+            a = experiment[odds_ratio].values
+            b = control[odds_ratio].values
 
             if input_type == 'matched':
                 a = [x for x in a if not np.isinf(x) and not np.isnan(x)]
