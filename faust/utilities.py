@@ -969,3 +969,122 @@ def count_gpp_output(
               'of reads successfully counted')
         print('{0:.2f}%'.format(100 * read_qc_filter_counter / counter),
               'of reads ignored due to low qc')
+
+def apply_threshold_to_grna_umi_counts(
+        counts,
+        barcodes=None,
+        fixed_threshold=1,
+        per_sample_read_fraction=1e-6,
+        per_sample_fixed_threshold=None,
+        number_of_cells_in_sample=None,
+        per_sample_per_barcode_of_expected_threshold=1e-3,
+        faust_probabilistic_model_error_rate=1e-6,
+        mode='fixed'):
+    import numpy as np
+    import pandas as pd
+    if mode not in [
+            'fixed', 'per_sample', 'per_sample_per_barcode',
+            'faust_probabilistic_model', 'per_sample_fixed_threshold'
+    ]:
+        raise Exception(
+            "mode must be in ['fixed','per_sample','per_sample_per_barcode','faust_probabilistic_model','per_sample_fixed_threshold']"
+        )
+    if mode == 'fixed':
+        return counts * (counts > fixed_threshold)
+    elif mode == 'per_sample':
+        if barcodes is None:
+            raise Exception(
+                'barcodes must not be None when mode == "per_sample"')
+        if len(barcodes) != len(counts):
+            raise Exception(
+                'barcodes must be iterable with length equal to counts')
+        return counts * ((counts / np.sum(counts)) > per_sample_read_fraction)
+    elif mode == 'per_sample_fixed_threshold':
+        if barcodes is None:
+            raise Exception(
+                'barcodes must not be None when mode == "per_sample_fixed_threshold"'
+            )
+        if len(barcodes) != len(counts):
+            raise Exception(
+                'barcodes must be iterable with length equal to counts')
+        return counts * (counts > per_sample_fixed_threshold)
+    elif mode == 'per_sample_per_barcode':
+        if barcodes is None:
+            raise Exception(
+                'barcodes must not be None when mode == "per_sample_per_barcode"'
+            )
+        if number_of_cells_in_sample is None:
+            raise Exception(
+                'number_of_cells_in_sample must not be None when mode == "per_sample_per_barcode"'
+            )
+        if len(barcodes) != len(counts):
+            raise Exception(
+                'barcodes must be iterable with length equal to counts')
+        if type(counts)==pd.core.series.Series:
+            counts = counts.values
+        df = pd.DataFrame(counts, columns=['count'])
+        df['barcode'] = barcodes
+        barcode2barcode_sum = df.groupby('barcode')['count'].sum().to_dict()
+        df['barcode_sum'] = [barcode2barcode_sum[x] if barcode2barcode_sum[x]>0 else np.nan for x in barcodes]
+
+        df['normalized_counts'] = df['count'] / df['barcode_sum']
+        n_barcodes = len(np.unique(barcodes))
+        df['threshold'] = (number_of_cells_in_sample / n_barcodes
+                           ) * per_sample_per_barcode_of_expected_threshold
+        df['filtered_counts'] = df['count'] * (df['normalized_counts']
+                                                > df['threshold'])
+        return df['filtered_counts'].values
+    elif mode == 'faust_probabilistic_model':
+        if barcodes is None:
+            raise Exception(
+                'barcodes must not be None when mode == "faust_probabilistic_model"'
+            )
+        if len(barcodes) != len(counts):
+            raise Exception(
+                'barcodes must be iterable with length equal to counts')
+        if number_of_cells_in_sample is None:
+            raise Exception(
+                'number_of_cells_in_sample must not be None when mode == "faust_probabilistic_model"'
+            )
+        from scipy.stats import poisson
+        import pandas as pd
+        import numpy as np
+        if type(counts)==pd.core.series.Series:
+            counts = counts.values
+        df = pd.DataFrame(counts, columns=['count'])
+        df['barcode'] = barcodes
+        n_barcodes = len(np.unique(barcodes))
+        def get_per_barcode_threshold_using_probabilistic_model(
+                umi_counts,
+                n_sorted_cells,
+                total_grna=6000,
+                umi_error_rate=1e-4):
+            from scipy.stats import poisson
+            umi_counts = np.sort(umi_counts.values)[::-1]
+            if np.sum(umi_counts) == 0:
+                return np.nan
+            l_true = n_sorted_cells / total_grna
+            l_read_error = umi_counts[0] * umi_error_rate
+            prob_single_read_error = (1 - poisson.cdf(1, l_read_error))
+            if not np.isnan(prob_single_read_error):
+                for j in range(1, len(umi_counts) + 1):
+                    prob_true = (1 - poisson.cdf(j, l_true)) / (
+                        1 - poisson.cdf(1, l_true))
+                    if prob_true < prob_single_read_error:
+                        break
+                if j<len(umi_counts):
+                    return umi_counts[j]
+                else:
+                    return 0
+            else:
+                return 0
+
+        barcode2threshold = df.groupby('barcode')['count'].apply(
+            get_per_barcode_threshold_using_probabilistic_model,
+            *(number_of_cells_in_sample, n_barcodes,
+              faust_probabilistic_model_error_rate)).to_dict()
+        #print(barcode2threshold)
+        df['threshold'] = [barcode2threshold[x] for x in df['barcode'].values]
+        return df['count'].values * (df['count'].values
+                                     > df['threshold'].values)
+
