@@ -1,4 +1,5 @@
 def plot_top_hits(summary_df,
+                y='CommonLanguageEffectSize',
                   ascending=False,
                   nhits=10,
                   figsize=(9, 5),
@@ -55,7 +56,7 @@ def plot_top_hits(summary_df,
         hits = selected_genes
     swarmviolin(
         summary_df[summary_df['gene'].isin(hits)].sort_values(sort_criterion),
-        y='CommonLanguageEffectSize',
+        y=y,
         x='gene',
         ax=ax,
         hue=hue,

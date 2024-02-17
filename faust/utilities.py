@@ -9,14 +9,13 @@ def read_gpp_output(
         barcode2gene_dict=None,
         indices=['Construct Barcode', 'Construct IDs', 'UMI', 'Target Gene'],
         dropcols=[]):
-    """
-    Helper function designed to read output generated at the Broad Gene Perturbation Platform (GPP).  
+    """Helper function designed to read output generated at the Broad Gene Perturbation Platform (GPP).
     Output takes the form of multiple folders with counts matrices generated via PoolQ3. The chipfile is used to
-    create a mapping between a barcode sequence and a gene (using the columns "Barcode Sequence" and "Gene Symbol" within 
+    create a mapping between a barcode sequence and a gene (using the columns "Barcode Sequence" and "Gene Symbol" within
     the chip file). If no chip file is present, one may simply pass a dictionary with this mapping as the optional argument
     "barcode2gene_dict". This function will then loop through all the files in the specified folders (ignoring those with "MATCH" in the
-    filename, indicating counts that could not be matched to a specific UMI), make a note of their UMI, and concatenate them. 
-    These filenames should have the form "<something>-XXXXXX.txt", where "XXXXXX" is the umi. 
+    filename, indicating counts that could not be matched to a specific UMI), make a note of their UMI, and concatenate them.
+    These filenames should have the form "<something>-XXXXXX.txt", where "XXXXXX" is the umi.
 
     Parameters
     ----------
@@ -30,10 +29,15 @@ def read_gpp_output(
         (Default value = ['Construct Barcode', 'Construct IDs', 'UMI' , 'Target Gene'] :
     dropcols : list, list of columns in txt file to drop
         (Default value = [])
+    'Construct IDs' :
+        
+    'UMI' :
+        
+    'Target Gene'] :
+        
 
     Returns
     -------
-    pandas dataframe containing counts for all gRNA-UMI combinations, across locations
 
     
     """
@@ -73,16 +77,13 @@ def get_summary_df(df,
                    outputs,
                    input_type='single',
                    verbose=True,
-                   count_threshold=1,
+                   count_threshold=0,
                    estimate_cells=True,
                    gene_col='Target Gene',
                    alternative='two-sided',
                    downsample_control=False,
                    custom_test=None,
-                   custom_effect_size=None,
-                   assume_equal_inputs=False,
-                   run_parallel=True,
-                   control_and_experiment_exclusive=True):
+                   custom_effect_size=None):
     """
 
     Parameters
@@ -104,11 +105,196 @@ def get_summary_df(df,
     estimate_cells :
         (Default value = True)
     gene_col :
-         (Default value = 'Target Gene')
+        (Default value = 'Target Gene')
     alternative :
-         (Default value = 'two-sided')
+        (Default value = 'two-sided')
     downsample_control :
+        (Default value = False)
+    custom_test :
+         (Default value = None)
+    custom_effect_size :
+         (Default value = None)
+
+    Returns
+    -------
+
+    
+    """
+    from tqdm import tqdm
+    import pandas as pd
+    from faust.utilities import nan_fdrcorrection_q
+    from scipy.stats import mannwhitneyu
+
+    if input_type not in ['single', 'matched']:
+        raise Exception("input_type must be one of 'single', 'matched'")
+    df = df.copy()
+    if input_type == 'single':
+        df['Input Sum'] = df[inputs].sum(axis=1)
+        df = df[df['Input Sum'] > count_threshold]
+        inputs = ['Input Sum'] * len(outputs)
+    else:
+        if len(outputs) != len(inputs):
+            raise Exception(
+                "outputs and inputs must be equal length when input_type is 'matched'"
+            )
+    output2input_dict = {}
+    for output_col, input_col in zip(outputs, inputs):
+        df[output_col] = np.where(df[output_col] > count_threshold,
+                                  df[output_col], 0)
+        df[input_col] = np.where(df[input_col] > count_threshold,
+                                 df[input_col], 0)
+        if verbose:
+            print("Comparing input", input_col, "with output", output_col)
+        df[output_col + '_odds_ratio'] = np.divide(df[output_col],
+                                                   df[input_col])
+        output2input_dict[output_col] = input_col
+
+    constructs_ids = []
+    cless = []
+    output_sites = []
+    input_sites = []
+    mws = []
+    custom_tests = []
+    custom_effect_sizes = []
+    if estimate_cells:
+        from faust.utilities import estimate_cell_input
+        estimated_cells_input = []
+        estimated_cells_output = []
+    construct_ids = df[gene_col].unique()
+    if verbose:
+        construct_ids = tqdm(construct_ids,
+                             desc='Looping through target genes')
+    for construct_id in construct_ids:
+        experiment = df[df[gene_col] == construct_id]
+        control = df[df[gene_col].isin(controls) & (
+            df[gene_col] != construct_id
+        )]  # This is so there is no overlap between the experiment and control groups
+        for odds_ratio in [
+                x for x in experiment.columns if x.endswith('_odds_ratio')
+        ]:
+            a = experiment[odds_ratio].values
+            b = control[odds_ratio].values
+            if downsample_control is not False:
+                if type(downsample_control) is not float:
+                    if (downsamplecontrol <= 0) or (downsample_control >= 1):
+                        raise Exception(
+                            "downsample_control must be False, or a float in (0,1)"
+                        )
+                subsample_mask = np.random.choice(
+                    [False, True],
+                    replace=True,
+                    p=[1 - downsample_control, downsample_control],
+                    size=len(b))
+                b = b[subsample_mask]
+
+            if input_type == 'matched':
+                a = [x for x in a if not np.isinf(x) and not np.isnan(x)]
+                b = [x for x in b if not np.isinf(x) and not np.isnan(x)]
+            if len(a) == 0 or len(b) == 0:
+                cless.append(np.nan)
+                mws.append(np.nan)
+                if custom_test is not None:
+                    custom_tests.append(np.nan)
+                if custom_effect_size is not None:
+                    custom_effect_sizes.append(np.nan)
+
+            else:
+                mw = mannwhitneyu(a, b, alternative=alternative)
+                cless.append(mw.statistic / len(a) / len(b))
+                mws.append(mw.pvalue)
+                if custom_test is not None:
+                    custom_tests.append(custom_test(a, b))
+                if custom_effect_size is not None:
+                    custom_effect_sizes.append(custom_effect_size(a, b))
+            output_site = odds_ratio.split('_odds_ratio')[0]
+            output_sites.append(output_site)
+            input_site = output2input_dict[odds_ratio.split('_odds_ratio')[0]]
+            input_sites.append(input_site)
+            constructs_ids.append(construct_id)
+            if estimate_cells:
+                estimated_cells_input.append(
+                    estimate_cell_input(df,
+                                        input_site,
+                                        construct_id,
+                                        count_threshold,
+                                        target_gene_col=gene_col))
+                estimated_cells_output.append(
+                    estimate_cell_input(df,
+                                        output_site,
+                                        construct_id,
+                                        count_threshold,
+                                        target_gene_col=gene_col))
+
+    summary_df = pd.DataFrame(constructs_ids, columns=['gene'])
+    summary_df['output_site'] = output_sites
+    summary_df['input_site'] = input_sites
+    summary_df['CommonLanguageEffectSize'] = cless
+    summary_df['MannWhitneyP'] = mws
+    summary_df['BH_q'] = nan_fdrcorrection_q(summary_df['MannWhitneyP'].values)
+    if custom_test is not None:
+        summary_df['CustomTest'] = custom_tests
+        summary_df['CustomTest_BH_q'] = nan_fdrcorrection_q(
+            summary_df['CustomTest'].values)
+    if custom_effect_size is not None:
+        summary_df['CustomEffectSize'] = custom_effect_sizes
+    if estimate_cells:
+        summary_df['input_estimated_cell_count'] = estimated_cells_input
+        summary_df['output_estimated_cell_count'] = estimated_cells_output
+    return summary_df
+
+
+def get_summary_df_v2(df,
+                      controls,
+                      inputs,
+                      outputs,
+                      input_type='single',
+                      verbose=True,
+                      count_threshold=1,
+                      estimate_cells=True,
+                      gene_col='Target Gene',
+                      alternative='two-sided',
+                      downsample_control=False,
+                      custom_test=None,
+                      custom_effect_size=None,
+                      assume_equal_inputs=False,
+                      run_parallel=True,
+                      control_and_experiment_exclusive=True):
+    """
+
+    Parameters
+    ----------
+    df :
+        
+    controls :
+        
+    inputs :
+        
+    outputs :
+        
+    input_type :
+        (Default value = 'single')
+    verbose :
+        (Default value = True)
+    count_threshold :
+        (Default value = 1)
+    estimate_cells :
+        (Default value = True)
+    gene_col :
+        (Default value = 'Target Gene')
+    alternative :
+        (Default value = 'two-sided')
+    downsample_control :
+        (Default value = False)
+    custom_test :
+         (Default value = None)
+    custom_effect_size :
+         (Default value = None)
+    assume_equal_inputs :
          (Default value = False)
+    run_parallel :
+         (Default value = True)
+    control_and_experiment_exclusive :
+         (Default value = True)
 
     Returns
     -------
@@ -123,9 +309,9 @@ def get_summary_df(df,
         if run_parallel:
             from joblib import Parallel, delayed
             return pd.concat(
-                Parallel(n_jobs=-1, )(delayed(get_summary_df)
+                Parallel(n_jobs=-1, )(delayed(get_summary_df_v2)
                                       (df[[gene_col, col] + inputs],
-                                       df['Target Gene'].unique(),
+                                       df[gene_col].unique(),
                                        inputs, [col],
                                        run_parallel=False,
                                        input_type=input_type,
@@ -143,62 +329,62 @@ def get_summary_df(df,
                                       for col in outputs))
         elif len(outputs) > 1:
             return pd.concat([
-                get_summary_df(df[[gene_col, col] + inputs],
-                               df['Target Gene'].unique(),
-                               inputs, [col],
-                               run_parallel=False,
-                               input_type=input_type,
-                               verbose=verbose,
-                               count_threshold=count_threshold,
-                               estimate_cells=estimate_cells,
-                               gene_col=gene_col,
-                               alternative=alternative,
-                               downsample_control=downsample_control,
-                               custom_test=custom_test,
-                               custom_effect_size=custom_effect_size,
-                               assume_equal_inputs=assume_equal_inputs,
-                               control_and_experiment_exclusive=
-                               control_and_experiment_exclusive)
+                get_summary_df_v2(df[[gene_col, col] + inputs],
+                                  df[gene_col].unique(),
+                                  inputs, [col],
+                                  run_parallel=False,
+                                  input_type=input_type,
+                                  verbose=verbose,
+                                  count_threshold=count_threshold,
+                                  estimate_cells=estimate_cells,
+                                  gene_col=gene_col,
+                                  alternative=alternative,
+                                  downsample_control=downsample_control,
+                                  custom_test=custom_test,
+                                  custom_effect_size=custom_effect_size,
+                                  assume_equal_inputs=assume_equal_inputs,
+                                  control_and_experiment_exclusive=
+                                  control_and_experiment_exclusive)
                 for col in outputs
             ])
     elif input_type == 'matched':
         if run_parallel:
             from joblib import Parallel, delayed
             return pd.concat(
-                Parallel(n_jobs=4, )(delayed(
-                    get_summary_df)(df[[gene_col, col] + inputs],
-                                    df['Target Gene'].unique(), [input], [col],
-                                    run_parallel=False,
-                                    input_type=input_type,
-                                    verbose=verbose,
-                                    count_threshold=count_threshold,
-                                    estimate_cells=estimate_cells,
-                                    gene_col=gene_col,
-                                    alternative=alternative,
-                                    downsample_control=downsample_control,
-                                    custom_test=custom_test,
-                                    custom_effect_size=custom_effect_size,
-                                    assume_equal_inputs=assume_equal_inputs,
-                                    control_and_experiment_exclusive=
-                                    control_and_experiment_exclusive)
+                Parallel(n_jobs=4, )(delayed(get_summary_df_v2)
+                                     (df[[gene_col, col] + inputs],
+                                      df[gene_col].unique(), [input], [col],
+                                      run_parallel=False,
+                                      input_type=input_type,
+                                      verbose=verbose,
+                                      count_threshold=count_threshold,
+                                      estimate_cells=estimate_cells,
+                                      gene_col=gene_col,
+                                      alternative=alternative,
+                                      downsample_control=downsample_control,
+                                      custom_test=custom_test,
+                                      custom_effect_size=custom_effect_size,
+                                      assume_equal_inputs=assume_equal_inputs,
+                                      control_and_experiment_exclusive=
+                                      control_and_experiment_exclusive)
                                      for input, col in zip(inputs, outputs)))
         elif len(outputs) > 1:
             return pd.concat([
-                get_summary_df(df[[gene_col, col] + inputs],
-                               df['Target Gene'].unique(), [input], [col],
-                               run_parallel=False,
-                               input_type=input_type,
-                               verbose=verbose,
-                               count_threshold=count_threshold,
-                               estimate_cells=estimate_cells,
-                               gene_col=gene_col,
-                               alternative=alternative,
-                               downsample_control=downsample_control,
-                               custom_test=custom_test,
-                               custom_effect_size=custom_effect_size,
-                               assume_equal_inputs=assume_equal_inputs,
-                               control_and_experiment_exclusive=
-                               control_and_experiment_exclusive)
+                get_summary_df_v2(df[[gene_col, col] + inputs],
+                                  df[gene_col].unique(), [input], [col],
+                                  run_parallel=False,
+                                  input_type=input_type,
+                                  verbose=verbose,
+                                  count_threshold=count_threshold,
+                                  estimate_cells=estimate_cells,
+                                  gene_col=gene_col,
+                                  alternative=alternative,
+                                  downsample_control=downsample_control,
+                                  custom_test=custom_test,
+                                  custom_effect_size=custom_effect_size,
+                                  assume_equal_inputs=assume_equal_inputs,
+                                  control_and_experiment_exclusive=
+                                  control_and_experiment_exclusive)
                 for input, col in zip(inputs, outputs)
             ])
 
@@ -353,7 +539,8 @@ def nan_fdrcorrection_q(pvalues):
 
 def get_replicate_aggregated_statistics(summary_df,
                                         aggregation_column=None,
-                                        inplace=False):
+                                        inplace=False,
+                                        pvalue_col_name='MannWhitneyP'):
     """
 
     Parameters
@@ -364,6 +551,8 @@ def get_replicate_aggregated_statistics(summary_df,
         (Default value = None)
     inplace :
         (Default value = False)
+    pvalue_col_name :
+         (Default value = 'MannWhitneyP')
 
     Returns
     -------
@@ -383,7 +572,7 @@ def get_replicate_aggregated_statistics(summary_df,
 
         aggregate_gene_max_p = summary_df[
             summary_df[aggregation_column] == aggregation].groupby(
-                'gene')['MannWhitneyP'].apply(max)
+                'gene')[pvalue_col_name].apply(max)
         gene2aggregate_union_q = {
             gene: q
             for gene, q in zip(
@@ -395,7 +584,7 @@ def get_replicate_aggregated_statistics(summary_df,
 
         aggregate_gene_fisher_combined_p = summary_df[
             summary_df[aggregation_column] == aggregation].groupby('gene')[
-                'MannWhitneyP'].apply(combine_pvalues).apply(lambda x: x[1])
+                pvalue_col_name].apply(combine_pvalues).apply(lambda x: x[1])
         gene2aggregate_intersection_q = {
             gene: q
             for gene, q in zip(
@@ -854,9 +1043,9 @@ def count_gpp_output(
     verbose :
         (Default value = True)
     read_quality_start :
-         (Default value = 32)
+        (Default value = 32)
     read_quality_end :
-         (Default value = 38)
+        (Default value = 38)
 
     Returns
     -------
@@ -970,34 +1159,94 @@ def count_gpp_output(
         print('{0:.2f}%'.format(100 * read_qc_filter_counter / counter),
               'of reads ignored due to low qc')
 
+
+def apply_cross_sample_filter_to_grna_umi_counts(counts_matrix,
+                                                 subjects,
+                                                 threshold_factor=1e-5,
+                                                 subject_blacklist=[]):
+    """
+
+    Parameters
+    ----------
+    counts_matrix :
+        
+    subjects :
+        
+    threshold_factor :
+         (Default value = 1e-5)
+    subject_blacklist :
+         (Default value = [])
+
+    Returns
+    -------
+
+    """
+    from tqdm import tqdm
+    import numpy as np
+    samples = counts_matrix.columns
+    counts_matrix_filtered = counts_matrix.copy()
+    for sample, subject in zip(tqdm(samples), subjects):
+        non_subject_samples = ~np.isin(subjects, [subject] + subject_blacklist)
+        counts_matrix_filtered[sample] = counts_matrix_filtered[sample] * (
+            counts_matrix_filtered[sample]
+            > counts_matrix.iloc[:, non_subject_samples].max(axis=1) *
+            threshold_factor)
+    return counts_matrix_filtered
+
+
 def apply_threshold_to_grna_umi_counts(
         counts,
         barcodes=None,
-        fixed_threshold=1,
+        fixed_threshold=0,
         per_sample_read_fraction=1e-6,
         per_sample_fixed_threshold=None,
-        number_of_cells_in_sample=None,
+        number_of_cells_recovered=None,
         per_sample_per_barcode_of_expected_threshold=1e-3,
         faust_probabilistic_model_error_rate=1e-6,
+        per_recovered_cell_read_fraction=1e-3,
         mode='fixed'):
+    """
+
+    Parameters
+    ----------
+    counts :
+        
+    barcodes :
+         (Default value = None)
+    fixed_threshold :
+         (Default value = 0)
+    per_sample_read_fraction :
+         (Default value = 1e-6)
+    per_sample_fixed_threshold :
+         (Default value = None)
+    number_of_cells_recovered :
+         (Default value = None)
+    per_sample_per_barcode_of_expected_threshold :
+         (Default value = 1e-3)
+    faust_probabilistic_model_error_rate :
+         (Default value = 1e-6)
+    per_recovered_cell_read_fraction :
+         (Default value = 1e-3)
+    mode :
+         (Default value = 'fixed')
+
+    Returns
+    -------
+
+    """
     import numpy as np
     import pandas as pd
     if mode not in [
             'fixed', 'per_sample', 'per_sample_per_barcode',
-            'faust_probabilistic_model', 'per_sample_fixed_threshold'
+            'faust_probabilistic_model', 'per_sample_fixed_threshold',
+            'per_sample_cell_recovery_adjusted'
     ]:
         raise Exception(
-            "mode must be in ['fixed','per_sample','per_sample_per_barcode','faust_probabilistic_model','per_sample_fixed_threshold']"
+            "mode must be in ['fixed','per_sample','per_sample_per_barcode','faust_probabilistic_model','per_sample_fixed_threshold',per_sample_cell_recovery_adjusted']"
         )
     if mode == 'fixed':
         return counts * (counts > fixed_threshold)
     elif mode == 'per_sample':
-        if barcodes is None:
-            raise Exception(
-                'barcodes must not be None when mode == "per_sample"')
-        if len(barcodes) != len(counts):
-            raise Exception(
-                'barcodes must be iterable with length equal to counts')
         return counts * ((counts / np.sum(counts)) > per_sample_read_fraction)
     elif mode == 'per_sample_fixed_threshold':
         if barcodes is None:
@@ -1008,31 +1257,42 @@ def apply_threshold_to_grna_umi_counts(
             raise Exception(
                 'barcodes must be iterable with length equal to counts')
         return counts * (counts > per_sample_fixed_threshold)
+    elif mode == 'per_sample_cell_recovery_adjusted':
+        if number_of_cells_recovered is None:
+            raise Exception(
+                'number_of_cells_recovered must not be None when mode == "per_sample_cell_recovery_adjusted"'
+            )
+        return counts * (
+            (counts / np.sum(counts)
+             > per_recovered_cell_read_fraction / number_of_cells_recovered))
     elif mode == 'per_sample_per_barcode':
         if barcodes is None:
             raise Exception(
                 'barcodes must not be None when mode == "per_sample_per_barcode"'
             )
-        if number_of_cells_in_sample is None:
+        if number_of_cells_recovered is None:
             raise Exception(
-                'number_of_cells_in_sample must not be None when mode == "per_sample_per_barcode"'
+                'number_of_cells_recovered must not be None when mode == "per_sample_per_barcode"'
             )
         if len(barcodes) != len(counts):
             raise Exception(
                 'barcodes must be iterable with length equal to counts')
-        if type(counts)==pd.core.series.Series:
+        if type(counts) == pd.core.series.Series:
             counts = counts.values
         df = pd.DataFrame(counts, columns=['count'])
         df['barcode'] = barcodes
         barcode2barcode_sum = df.groupby('barcode')['count'].sum().to_dict()
-        df['barcode_sum'] = [barcode2barcode_sum[x] if barcode2barcode_sum[x]>0 else np.nan for x in barcodes]
+        df['barcode_sum'] = [
+            barcode2barcode_sum[x] if barcode2barcode_sum[x] > 0 else np.nan
+            for x in barcodes
+        ]
 
         df['normalized_counts'] = df['count'] / df['barcode_sum']
         n_barcodes = len(np.unique(barcodes))
-        df['threshold'] = (number_of_cells_in_sample / n_barcodes
+        df['threshold'] = (number_of_cells_recovered / n_barcodes
                            ) * per_sample_per_barcode_of_expected_threshold
         df['filtered_counts'] = df['count'] * (df['normalized_counts']
-                                                > df['threshold'])
+                                               > df['threshold'])
         return df['filtered_counts'].values
     elif mode == 'faust_probabilistic_model':
         if barcodes is None:
@@ -1042,23 +1302,41 @@ def apply_threshold_to_grna_umi_counts(
         if len(barcodes) != len(counts):
             raise Exception(
                 'barcodes must be iterable with length equal to counts')
-        if number_of_cells_in_sample is None:
+        if number_of_cells_recovered is None:
             raise Exception(
-                'number_of_cells_in_sample must not be None when mode == "faust_probabilistic_model"'
+                'number_of_cells_recovered must not be None when mode == "faust_probabilistic_model"'
             )
         from scipy.stats import poisson
         import pandas as pd
         import numpy as np
-        if type(counts)==pd.core.series.Series:
+        if type(counts) == pd.core.series.Series:
             counts = counts.values
         df = pd.DataFrame(counts, columns=['count'])
         df['barcode'] = barcodes
         n_barcodes = len(np.unique(barcodes))
+
         def get_per_barcode_threshold_using_probabilistic_model(
                 umi_counts,
                 n_sorted_cells,
                 total_grna=6000,
-                umi_error_rate=1e-4):
+                umi_error_rate=1e-6):
+            """
+
+            Parameters
+            ----------
+            umi_counts :
+                
+            n_sorted_cells :
+                
+            total_grna :
+                 (Default value = 6000)
+            umi_error_rate :
+                 (Default value = 1e-6)
+
+            Returns
+            -------
+
+            """
             from scipy.stats import poisson
             umi_counts = np.sort(umi_counts.values)[::-1]
             if np.sum(umi_counts) == 0:
@@ -1072,19 +1350,108 @@ def apply_threshold_to_grna_umi_counts(
                         1 - poisson.cdf(1, l_true))
                     if prob_true < prob_single_read_error:
                         break
-                if j<len(umi_counts):
-                    return umi_counts[j]
-                else:
-                    return 0
+#                if j < len(umi_counts):
+                return umi_counts[j - 1]
+
+
+#                else:
+#                    return 0
             else:
                 return 0
 
         barcode2threshold = df.groupby('barcode')['count'].apply(
             get_per_barcode_threshold_using_probabilistic_model,
-            *(number_of_cells_in_sample, n_barcodes,
+            *(number_of_cells_recovered, n_barcodes,
               faust_probabilistic_model_error_rate)).to_dict()
         #print(barcode2threshold)
         df['threshold'] = [barcode2threshold[x] for x in df['barcode'].values]
         return df['count'].values * (df['count'].values
                                      > df['threshold'].values)
 
+
+def get_engraftment(
+    counts,
+    mode,
+    inputnumber,
+    recoverednumber,
+    barcodes,
+):
+    """
+
+    Parameters
+    ----------
+    counts : List of gRNA-UMI counts
+        
+    mode : One of 'nothreshold','fixed','per_sample','per_sample_cell_recovery_adjusted','per_sample_per_barcode', 'faust_probabalistic_model','combined'
+        
+    inputnumber : Number of cells in input aliquot (pre-engraftment cell count)
+        
+    recoverednumber : Number of cells recovered by output, as counted by flow
+        
+    barcodes : list of barcode (gRNA) names (identical in length to list of counts)
+        
+
+    Returns
+    -------
+
+    """
+    from faust.utilities import apply_threshold_to_grna_umi_counts
+    if mode == 'nothreshold':
+        filtered_data = apply_threshold_to_grna_umi_counts(counts,
+                                                           fixed_threshold=0,
+                                                           mode='fixed')
+        anno = 'no filtering/thresholding applied'
+
+    elif mode == 'fixed':
+        filtered_data = apply_threshold_to_grna_umi_counts(counts,
+                                                           fixed_threshold=1,
+                                                           mode=mode)
+        anno = 'fixed threshold (>{} count considered)'.format(fixed_threshold)
+
+    elif mode == 'per_sample':
+        filtered_data = apply_threshold_to_grna_umi_counts(counts, mode=mode)
+        anno = 'per-sample threshold (reads normalized to (median over all samples)/(sample total), counts>1 considered)'
+    elif mode == 'per_sample_cell_recovery_adjusted':
+        filtered_data = apply_threshold_to_grna_umi_counts(
+            counts,
+            number_of_cells_in_sample=recoverednumber,
+            mode=mode,
+            per_recovered_cell_read_fraction=0.01)
+        anno = 'per-sample threshold (reads normalized to (number of cells recovery)/(sample total), counts>{} considered)'.format(
+            per_recovered_cell_read_fraction)
+    elif mode == 'per_sample_per_barcode':
+        filtered_data = apply_threshold_to_grna_umi_counts(
+            counts,
+            barcodes=barcodes,
+            number_of_cells_recovered=recoverednumber,
+            mode=mode)
+        anno = 'per-sample threshold (reads normalized to (median over all samples)/(sample total), counts>1 considered)'
+
+    elif mode == 'faust_probabilistic_model':
+        filtered_data = apply_threshold_to_grna_umi_counts(
+            counts,
+            barcodes=barcodes,
+            number_of_cells_recovered=recoverednumber,
+            mode=mode,
+            faust_probabilistic_model_error_rate=1e-6)
+        anno = 'per-sample threshold (reads normalized to (median over all samples)/(sample total), counts>1 considered)'
+
+    elif mode == 'combined':
+        filtered_data1 = apply_threshold_to_grna_umi_counts(
+            counts,
+            barcodes=barcodes,
+            number_of_cells_recovered=recoverednumber,
+            mode='per_sample_cell_recovery_adjusted',
+        )
+        filtered_data2 = apply_threshold_to_grna_umi_counts(
+            counts,
+            barcodes=barcodes,
+            number_of_cells_recovered=recoverednumber,
+            mode='faust_probabilistic_model',
+            faust_probabilistic_model_error_rate=1e-6)
+        filtered_data = counts * (filtered_data1 > 0) * (filtered_data2 > 0)
+        anno = 'combination of FAUST probabilistic model and per-sample normalization (thresholds computed separately, intersection taken thereof)'
+
+    predicted = predicted_input(len(barcodes), (filtered_data > 0).sum())
+
+    return predicted, predicted / inputnumber, anno
