@@ -1455,3 +1455,47 @@ def get_engraftment(
     predicted = predicted_input(len(barcodes), (filtered_data > 0).sum())
 
     return predicted, predicted / inputnumber, anno
+
+
+def morisita(counts1, counts2):
+    """
+
+    Parameters
+    ----------
+    counts1 :
+        
+    counts2 :
+        
+
+    Returns
+    -------
+
+    
+    """
+    from faust.utilities import simpson
+    simpson1 = simpson(counts1, with_replacement=True)
+    simpson2 = simpson(counts2, with_replacement=True)
+    cross = (counts1 * counts2).sum() / counts1.sum() / counts2.sum()
+    return 2 * cross / (simpson1 + simpson2)
+
+
+def simpson(x, with_replacement=False):
+    """For computing simpson index directly from counts (or frequencies, if with_replacement=True)
+
+    Parameters
+    ----------
+    x :
+        
+    with_replacement :
+        (Default value = False)
+
+    Returns
+    -------
+
+    
+    """
+    total = np.sum(x)
+    if with_replacement:
+        return np.sum([(y / total) * (y / total) for y in x])
+    else:
+        return np.sum([(y / total) * ((y - 1) / (total - 1)) for y in x])
