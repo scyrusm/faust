@@ -6,6 +6,7 @@ import os
 def read_gpp_output(
         folders,
         chipfile=None,
+        chipfile_gene_symbol_colname='Gene Symbol',
         barcode2gene_dict=None,
         indices=['Construct Barcode', 'Construct IDs', 'UMI', 'Target Gene'],
         dropcols=[]):
@@ -46,8 +47,14 @@ def read_gpp_output(
             "One of barcode2gene_dict or chipfile must not be None")
     if barcode2gene_dict is None:
         chip = pd.read_table(chipfile)
+        if chipfile_gene_symbol_colname not in chip.columns:
+            raise Exception(
+                "key {} not one of {}, the columns in chipfile".format(
+                    chipfile_gene_symbol_colname, chip.columns))
         barcode2gene_dict = chip.set_index(
-            'Barcode Sequence')['Gene Symbol'].to_dict()
+            'Barcode Sequence')[chipfile_gene_symbol_colname].to_dict()
+    if type(folders) is str:
+        folders = [folders]
     dfss = []
     for folder in folders:
         dfs = []
@@ -1343,7 +1350,9 @@ def apply_threshold_to_grna_umi_counts(
                 return np.nan
             l_true = n_sorted_cells / total_grna
             l_read_error = umi_counts[0] * umi_error_rate
+            #            print(l_read_error)
             prob_single_read_error = (1 - poisson.cdf(1, l_read_error))
+            #            print(prob_single_read_error)
             if not np.isnan(prob_single_read_error):
                 for j in range(1, len(umi_counts) + 1):
                     prob_true = (1 - poisson.cdf(j, l_true)) / (
@@ -1352,7 +1361,6 @@ def apply_threshold_to_grna_umi_counts(
                         break
 #                if j < len(umi_counts):
                 return umi_counts[j - 1]
-
 
 #                else:
 #                    return 0
@@ -1365,24 +1373,58 @@ def apply_threshold_to_grna_umi_counts(
               faust_probabilistic_model_error_rate)).to_dict()
         #print(barcode2threshold)
         df['threshold'] = [barcode2threshold[x] for x in df['barcode'].values]
+        #        display(df['threshold'])
         return df['count'].values * (df['count'].values
                                      > df['threshold'].values)
 
 
-def get_engraftment(
-    counts,
-    mode,
-    inputnumber,
-    recoverednumber,
-    barcodes,
-):
+
+
+def poisson_gmm_threshold(counts,
+                          n_component=2,
+                          prethreshold=1,
+                          random_state=17):
+    from pomegranate.gmm import GeneralMixtureModel
+    from pomegranate.distributions import Poisson
+    import pandas as pd
+    model = GeneralMixtureModel([Poisson() for x in range(n_component)],
+                                verbose=False,
+                                max_iter=100,
+                                tol=0.01,
+                                random_state=random_state)
+    X = np.log(counts[counts > prethreshold]).values.reshape(-1, 1)
+
+    model.fit(X, )
+    predictions = np.array(model.predict(X))
+
+    prediction_df = pd.DataFrame(counts[counts > prethreshold].values,
+                                 columns=['counts'])
+    prediction_df['prediction'] = predictions
+    top_component = prediction_df.groupby('prediction').mean().sort_values(
+        'counts', ascending=False).index.values[0]
+    return counts[counts > prethreshold][predictions ==
+                                         top_component].min() - 1
+
+
+#from faust.utilities import get_engraftment
+#import seaborn as sns
+#import matplotlib.pyplot as plt
+
+
+def get_engraftment(counts,
+                    mode,
+                    inputnumber,
+                    recoverednumber,
+                    barcodes,
+                    fixed_threshold=1,
+                    faust_probabilistic_model_error_rate=1e-6):
     """
 
     Parameters
     ----------
     counts : List of gRNA-UMI counts
         
-    mode : One of 'nothreshold','fixed','per_sample','per_sample_cell_recovery_adjusted','per_sample_per_barcode', 'faust_probabalistic_model','combined'
+    mode : One of 'nothreshold','fixed','per_sample','per_sample_cell_recovery_adjusted','per_sample_per_barcode', 'faust_probabilistic_model','combined'
         
     inputnumber : Number of cells in input aliquot (pre-engraftment cell count)
         
@@ -1403,9 +1445,8 @@ def get_engraftment(
         anno = 'no filtering/thresholding applied'
 
     elif mode == 'fixed':
-        filtered_data = apply_threshold_to_grna_umi_counts(counts,
-                                                           fixed_threshold=1,
-                                                           mode=mode)
+        filtered_data = apply_threshold_to_grna_umi_counts(
+            counts, fixed_threshold=fixed_threshold, mode=mode)
         anno = 'fixed threshold (>{} count considered)'.format(fixed_threshold)
 
     elif mode == 'per_sample':
@@ -1433,8 +1474,9 @@ def get_engraftment(
             barcodes=barcodes,
             number_of_cells_recovered=recoverednumber,
             mode=mode,
-            faust_probabilistic_model_error_rate=1e-6)
-        anno = 'per-sample threshold (reads normalized to (median over all samples)/(sample total), counts>1 considered)'
+            faust_probabilistic_model_error_rate=
+            faust_probabilistic_model_error_rate)
+        anno = 'FAUST probabilistic model'
 
     elif mode == 'combined':
         filtered_data1 = apply_threshold_to_grna_umi_counts(
@@ -1448,11 +1490,12 @@ def get_engraftment(
             barcodes=barcodes,
             number_of_cells_recovered=recoverednumber,
             mode='faust_probabilistic_model',
-            faust_probabilistic_model_error_rate=1e-6)
+            faust_probabilistic_model_error_rate=
+            faust_probabilistic_model_error_rate)
         filtered_data = counts * (filtered_data1 > 0) * (filtered_data2 > 0)
         anno = 'combination of FAUST probabilistic model and per-sample normalization (thresholds computed separately, intersection taken thereof)'
 
-    predicted = predicted_input(len(barcodes), (filtered_data > 0).sum())
+    predicted = predicted_input(len(counts), (filtered_data > 0).sum())
 
     return predicted, predicted / inputnumber, anno
 
@@ -1499,3 +1542,39 @@ def simpson(x, with_replacement=False):
         return np.sum([(y / total) * (y / total) for y in x])
     else:
         return np.sum([(y / total) * ((y - 1) / (total - 1)) for y in x])
+
+
+def scale_across_pools(faust_output,
+                       pool_col='pool',
+                       genes_for_scaling=[],
+                       output_type_column='input->output',
+                       common_language_effect_col='CommonLanguageEffectSize'):
+    if len(genes_for_scaling) == 0:
+        raise Exception("must include genes to scale against")
+    from scipy.special import logit, expit
+    faust_output['logit(CLES)'] = faust_output[
+        common_language_effect_col].apply(logit)
+    io2pool2factor = {}
+    for io in faust_output[output_type_column].unique():
+        scalefactors_list = []
+        for gene in genes_for_scaling:
+            factor = np.median(
+                faust_output[faust_output[output_type_column] == io].query(
+                    'gene==@gene').groupby(pool_col)['logit(CLES)'].apply(
+                        np.nanmedian).values)
+            scalefactors = factor / faust_output[
+                faust_output[output_type_column] == io].query(
+                    'gene==@gene').groupby(pool_col)['logit(CLES)'].apply(
+                        np.nanmedian)
+            scalefactors_list.append(scalefactors)
+        scalefactor_df = pd.concat(scalefactors_list, axis=1)
+        #scalefactor
+        io2pool2factor[io] = scalefactor_df.apply(np.nanmedian,
+                                                  axis=1).to_dict()
+    faust_output['scaled_logit(CLES)'] = faust_output.apply(
+        lambda x: io2pool2factor[x[output_type_column]][x[pool_col]] * x[
+            'logit(CLES)'],
+        axis=1)
+    faust_output['scaled_CLES'] = faust_output['scaled_logit(CLES)'].apply(
+        expit)
+    return faust_output['scaled_CLES'].values
