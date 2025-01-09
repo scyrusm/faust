@@ -90,7 +90,8 @@ def get_summary_df(df,
                    alternative='two-sided',
                    downsample_control=False,
                    custom_test=None,
-                   custom_effect_size=None):
+                   custom_effect_size=None,
+                   progress_logger=None):
     """
 
     Parameters
@@ -168,6 +169,9 @@ def get_summary_df(df,
         estimated_cells_input = []
         estimated_cells_output = []
     construct_ids = df[gene_col].unique()
+    if progress_logger is not None:
+        progress=0
+        progress_logger.setValue(progress)
     if verbose:
         construct_ids = tqdm(construct_ids,
                              desc='Looping through target genes')
@@ -231,6 +235,9 @@ def get_summary_df(df,
                                         construct_id,
                                         count_threshold,
                                         target_gene_col=gene_col))
+        if progress_logger is not None:
+            progress+=100/len(construct_ids)
+            progress_logger.setValue(progress)
 
     summary_df = pd.DataFrame(constructs_ids, columns=['gene'])
     summary_df['output_site'] = output_sites
