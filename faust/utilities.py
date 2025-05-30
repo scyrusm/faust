@@ -9,7 +9,9 @@ def read_gpp_output(
         chipfile_gene_symbol_colname='Gene Symbol',
         barcode2gene_dict=None,
         indices=['Construct Barcode', 'Construct IDs', 'UMI', 'Target Gene'],
-        dropcols=[]):
+        dropcols=[],
+        umi_col='UMI',
+        collapse_umis=False):
     """Helper function designed to read output generated at the Broad Gene Perturbation Platform (GPP).
     Output takes the form of multiple folders with counts matrices generated via PoolQ3. The chipfile is used to
     create a mapping between a barcode sequence and a gene (using the columns "Barcode Sequence" and "Gene Symbol" within
@@ -64,7 +66,7 @@ def read_gpp_output(
         ]:
             df = pd.read_table(folder + '/' + txt)
             umi = txt.split('-')[-1].replace('.txt', '')
-            df['UMI'] = umi
+            df[umi_col] = umi
             dfs.append(df)
         dfs = pd.concat(dfs)
         dfs['Target Gene'] = [
@@ -75,7 +77,10 @@ def read_gpp_output(
         x[[y for y in x.columns if y not in dropcols]].set_index(indices)
         for x in dfss
     ]
-    return sum(dfss).reset_index()
+    gpp_df = sum(dfss).reset_index()
+    if collapse_umis:
+         gpp_df = gpp_df.drop(umi_col,axis=1).groupby([x for x in indices if x!=umi_col]).sum().reset_index()
+    return gpp_df
 
 
 def get_summary_df(df,
@@ -91,7 +96,8 @@ def get_summary_df(df,
                    downsample_control=False,
                    custom_test=None,
                    custom_effect_size=None,
-                   progress_logger=None):
+                   progress_logger=None
+                   ):
     """
 
     Parameters

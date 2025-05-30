@@ -8,7 +8,8 @@ def plot_top_hits(summary_df,
                   sort_criterion='CommonLanguageEffectSize',
                   hue=None,
                   swarmviolin_kwargs={},
-                  selected_genes=None):
+                  selected_genes=None,
+                  both_sides=False):
     """
 
     Parameters
@@ -43,6 +44,7 @@ def plot_top_hits(summary_df,
     """
     import matplotlib.pyplot as plt
     from panopticon.visualization import swarmviolin
+    import numpy as np
 
     if fig is None and ax is None:
         fig, ax = plt.subplots(figsize=figsize)
@@ -50,7 +52,14 @@ def plot_top_hits(summary_df,
         raise Exception("either both or neither of fig, ax must be None")
     summary_df = summary_df.copy()
     if selected_genes is None:
-        hits = summary_df.groupby('gene')[sort_criterion].mean().sort_values(
+        if both_sides:
+            hits = np.hstack((
+                summary_df.groupby('gene')[sort_criterion].mean().sort_values(
+                    ascending=True).head(nhits).index.values[::-1],
+                summary_df.groupby('gene')[sort_criterion].mean().sort_values(
+            ascending=False).head(nhits).index.values))
+        else:
+            hits = summary_df.groupby('gene')[sort_criterion].mean().sort_values(
             ascending=False).head(nhits).index.values
     else:
         hits = selected_genes
