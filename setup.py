@@ -10,16 +10,17 @@ def _read(*parts, **kwargs):
         text = fh.read()
     return text
 
+
 def get_requirements(path):
     content = _read(path)
     return [
         req
         for req in content.split("\n")
-        if req != '' and not req.startswith('#')
+        if req != "" and not (req.startswith("#") or req.startswith("-"))
     ]
 
-install_requires = get_requirements('requirements.txt')
 
+install_requires = get_requirements('requirements.txt')
 setup(
     name='faust',
     version='0.1dev',
