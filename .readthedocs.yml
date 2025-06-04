@@ -9,6 +9,9 @@ build:
   os: ubuntu-20.04  # <- add this line
   tools:
     python: "3.10"
+  jobs:
+    post_create_environment:
+      - python -m pip install sphinx_rtd_theme
 
 # Configuration for Sphinx documentation
 sphinx:
