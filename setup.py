@@ -26,6 +26,9 @@ setup(
     author='Samuel C. Markson',
     author_email='smarkson@alum.mit.edu',
     install_requires=install_requires, 
+    extras_require={
+        "GUI": ["PySide6", "matplotlib"],
+    },
     packages=find_packages(),
     scripts=['scripts/faust'],
     license='BSD',

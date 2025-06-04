@@ -8,6 +8,7 @@ FAUST
     :maxdepth: 1
 
     Overview <overview>
+    Installation <installation>
     UMIs <umis>
     The FAUST null hypothesis <nullhypothesis>
     Basic Usage <basicusage>
