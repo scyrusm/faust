@@ -38,9 +38,7 @@ class Window(QWidget):
         radio_layout = QHBoxLayout()
         radio_layout.addWidget(QLabel("input type: "))
         radio_layout.addWidget(single_radio)
-        radio_layout.addWidget(matched_radio)
-
-        # Now a checkbox for Boolean option
+        radio_layout.addWidget(matched_radio) # Now a checkbox for Boolean option
         self.estimate_cells_checkbox = QCheckBox('estimate cells?')
         #estimate_cells.
 

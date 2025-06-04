@@ -67,5 +67,31 @@ def count(sgrna_input, barcode_input, prefix, valid_constructs, valid_umis,
         approximate_construct_matching=approximate_construct_matching)
 
 
+@cli.command(
+    help=
+    "Starts a PySide6 GUI for FAUST"
+)
+def gui():
+    from faust.utilities import import_check
+    import_check("PySide6","pip install PySide6")
+    import_check("matplotlib","pip install matplotlib")
+
+    import sys
+    from PySide6 import QtGui, QtWidgets
+    from PySide6.QtCore import QSize
+    from PySide6.QtGui import QIcon, QFont
+    from PySide6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget, QComboBox, QHBoxLayout, QListWidget, QRadioButton, QButtonGroup, QLabel, QCheckBox, QProgressBar
+    import pandas as pd
+    import numpy as np
+    from matplotlib.backends.backend_qtagg import FigureCanvas
+    from matplotlib.figure import Figure
+    from faust.gui import Window
+    app = QApplication(sys.argv)
+    window = Window()
+    window.show()
+    sys.exit(app.exec())
+
+
+
 if __name__ == '__main__':
     cli()

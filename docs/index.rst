@@ -12,6 +12,7 @@ FAUST
     The FAUST null hypothesis <nullhypothesis>
     Basic Usage <basicusage>
     API <api>
+    GUI <gui>
     Dependencies <dependencies>
 
 

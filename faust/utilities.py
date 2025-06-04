@@ -1591,3 +1591,35 @@ def scale_across_pools(faust_output,
     faust_output['scaled_CLES'] = faust_output['scaled_logit(CLES)'].apply(
         expit)
     return faust_output['scaled_CLES'].values
+
+
+def import_check(package, statement_upon_failure, standard_prefix=True):
+    """
+
+    Parameters
+    ----------
+    package :
+        
+    statement_upon_failure :
+        
+    standard_prefix :
+        (Default value = True)
+
+    Returns
+    -------
+
+    
+    """
+    try:
+        exec("import {}".format(package))
+        return 0
+    except:
+        if standard_prefix:
+            print(
+                "Import of package \'{}\' failed. We recommend installing with the command \'{}\'"
+                .format(package, statement_upon_failure))
+        else:
+            print(
+                "Import of package \'{}\' failed. We recommend the following:  \n\'{}\'"
+                .format(package, statement_upon_failure))
+        return 1
